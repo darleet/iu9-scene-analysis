@@ -1,0 +1,29 @@
+app:
+  name: "scene-analysis"
+  debug: true
+
+input:
+  source_path: "data/raw/sample.mp4"
+  max_frames: 100
+  sample_every_n: 5
+
+preprocessing:
+  resize_width: 640
+  resize_height: 360
+  normalize_to_float: false
+  roi:
+    enabled: false
+    x: 0
+    y: 0
+    width: 640
+    height: 360
+
+output:
+  output_dir: "data/artifacts/run_001"
+  save_original_frames: true
+  save_preprocessed_frames: true
+  save_overlay_frames: true
+  save_jsonl: true
+
+runtime:
+  log_level: "INFO"

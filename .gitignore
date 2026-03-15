@@ -1,2 +1,8 @@
-### Jetbrains IDE
+__pycache__/
+.pytest_cache/
+.venv/
+dist/
+build/
+data/artifacts/*
+*.pyc
 .idea/

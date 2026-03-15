@@ -1,15 +1,29 @@
 [project]
-name = "diploma"
+name = "scene-analysis"
 version = "0.1.0"
-description = ""
-authors = [
-    {name = "Ivan Pavlov",email = "darleet@mail.ru"}
-]
+description = "Приложение для монокамерного анализа сцены и обнаружения препятствий"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
+authors = [{ name = "Ivan Pavlov", email = "darleet@mail.ru" }]
 dependencies = [
+    "opencv-python>=4.8,<5.0",
+    "numpy>=1.26,<3.0",
+    "PyYAML>=6.0,<7.0",
+    "typer>=0.12,<1.0",
+    "loguru>=0.7,<1.0",
+    "pydantic>=2.6,<3.0",
+    "pytest>=8.0,<9.0",
 ]
 
+[project.scripts]
+scene-analysis = "scene_analysis.app.cli:app"
+
+[tool.poetry]
+packages = [{ include = "scene_analysis", from = "src" }]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
