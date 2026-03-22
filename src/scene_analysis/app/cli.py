@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import typer
 from loguru import logger
+from tqdm import tqdm
 
 from scene_analysis.config import AppConfig, load_config
-from scene_analysis.depth.base import DummyDepthEstimator
+from scene_analysis.depth.base import create_depth_estimator
 from scene_analysis.dynamic.base import DummyDynamicObjectDetector
 from scene_analysis.io.artifact_writer import ArtifactWriter
 from scene_analysis.io.video_reader import VideoReader
@@ -34,6 +36,9 @@ def _apply_overrides(
     output_dir: Path | None,
     max_frames: int | None,
     sample_every_n: int | None,
+    depth_model: str | None,
+    device: str | None,
+    fp16: bool | None,
 ) -> AppConfig:
     if input_path is not None:
         config.input.source_path = input_path
@@ -43,7 +48,28 @@ def _apply_overrides(
         config.input.max_frames = max_frames
     if sample_every_n is not None:
         config.input.sample_every_n = sample_every_n
+    if depth_model is not None:
+        config.depth.model = depth_model
+    if device is not None:
+        config.depth.device = device
+    if fp16 is not None:
+        config.depth.use_fp16 = fp16
     return config
+
+
+def _estimate_total_frames(
+    reader: VideoReader,
+    max_frames: int | None,
+    sample_every_n: int,
+) -> int | None:
+    frame_count = reader.frame_count
+    if frame_count <= 0:
+        return max_frames
+
+    sampled_frame_count = math.ceil(frame_count / sample_every_n)
+    if max_frames is None:
+        return sampled_frame_count
+    return min(sampled_frame_count, max_frames)
 
 
 @app.command("run-video")
@@ -79,6 +105,21 @@ def run_video(
         min=1,
         help="Optional frame sampling step",
     ),
+    depth_model: str | None = typer.Option(
+        None,
+        "--depth-model",
+        help="Optional depth model override",
+    ),
+    device: str | None = typer.Option(
+        None,
+        "--device",
+        help="Optional depth device override",
+    ),
+    fp16: bool | None = typer.Option(
+        None,
+        "--fp16/--no-fp16",
+        help="Enable or disable fp16 inference override",
+    ),
 ) -> None:
     """Run scene analysis pipeline for mono camera"""
     reader: VideoReader | None = None
@@ -93,6 +134,9 @@ def run_video(
             output_dir=output_dir,
             max_frames=max_frames,
             sample_every_n=sample_every_n,
+            depth_model=depth_model,
+            device=device,
+            fp16=fp16,
         )
 
         setup_logging(config.runtime.log_level)
@@ -101,10 +145,18 @@ def run_video(
         logger.info("Starting {} pipeline", config.app.name)
         logger.info("Input source: {}", config.input.source_path)
         logger.info("Artifacts directory: {}", config.output.output_dir)
+        logger.info(
+            "Depth config: enabled={} provider={} model={} requested_device={} fp16={}",
+            config.depth.enabled,
+            config.depth.provider,
+            config.depth.model,
+            config.depth.device,
+            config.depth.use_fp16,
+        )
 
         reader = VideoReader(config.input.source_path)
         preprocessor = FramePreprocessor(config.preprocessing)
-        depth_estimator = DummyDepthEstimator()
+        depth_estimator = create_depth_estimator(config.depth)
         obstacle_builder = DummyObstacleMapBuilder()
         dynamic_detector = DummyDynamicObjectDetector()
         pipeline = MVPSceneAnalysisPipeline(
@@ -113,13 +165,33 @@ def run_video(
             obstacle_map_builder=obstacle_builder,
             dynamic_detector=dynamic_detector,
         )
-        writer = ArtifactWriter(config.output)
+        writer = ArtifactWriter(config.output, config.depth)
+
+        resolved_device = getattr(depth_estimator, "device", config.depth.device)
+        if config.depth.enabled:
+            logger.info(
+                "Depth estimator ready: model={} device={}",
+                config.depth.model,
+                resolved_device,
+            )
+        else:
+            logger.info("Depth estimation is disabled in config. Running preprocessing only")
 
         processed_frames = 0
-        for frame in reader.read_frames(
-            max_frames=config.input.max_frames,
-            sample_every_n=config.input.sample_every_n,
-        ):
+        progress = tqdm(
+            reader.read_frames(
+                max_frames=config.input.max_frames,
+                sample_every_n=config.input.sample_every_n,
+            ),
+            total=_estimate_total_frames(
+                reader=reader,
+                max_frames=config.input.max_frames,
+                sample_every_n=config.input.sample_every_n,
+            ),
+            desc="Processing video",
+            unit="frame",
+        )
+        for frame in progress:
             result = pipeline.process_frame(frame)
             writer.save_original(frame)
             writer.save_preprocessed(frame.frame_index, result.preprocessed_image)
@@ -128,10 +200,16 @@ def run_video(
             writer.append_result(result)
 
             processed_frames += 1
-            logger.info(
-                "Processed frame {} at {}",
+            inference_ms = result.depth.metadata.get("inference_ms")
+            progress.set_postfix(
+                frame=frame.frame_index,
+                inference_ms=f"{float(inference_ms):.1f}" if inference_ms is not None else "n/a",
+            )
+            logger.debug(
+                "Processed frame {} at {} with depth status {}",
                 frame.frame_index,
                 timestamp_to_str(frame.timestamp_ms),
+                result.depth.metadata.get("status", "unknown"),
             )
 
         logger.info(

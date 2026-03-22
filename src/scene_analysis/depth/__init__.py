@@ -1,3 +1,3 @@
-from .base import DepthEstimator, DummyDepthEstimator
+from .base import DepthEstimator, DummyDepthEstimator, create_depth_estimator
 
-__all__ = ["DepthEstimator", "DummyDepthEstimator"]
+__all__ = ["DepthEstimator", "DummyDepthEstimator", "create_depth_estimator"]

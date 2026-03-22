@@ -1,5 +1,3 @@
-"""Чтение кадров видео на базе OpenCV"""
-
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -64,9 +62,9 @@ class VideoReader:
     ) -> Iterator[FrameData]:
         """Чтение кадров из видео"""
         if max_frames is not None and max_frames <= 0:
-            raise ValueError("max_frames must be positive when provided.")
+            raise ValueError("max_frames must be positive when provided")
         if sample_every_n <= 0:
-            raise ValueError("sample_every_n must be positive.")
+            raise ValueError("sample_every_n must be positive")
 
         self.open()
         assert self._capture is not None

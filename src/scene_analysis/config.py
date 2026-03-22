@@ -4,12 +4,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class BaseConfigModel(BaseModel):
-    """Базовая модель для строгой валидации конфигурации"""
-
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
 
@@ -22,15 +20,15 @@ class RoiConfig(BaseConfigModel):
     width: int = 640
     height: int = 360
 
-    @classmethod
     @field_validator("x", "y")
+    @classmethod
     def validate_non_negative_origin(cls, value: int) -> int:
         if value < 0:
             raise ValueError("ROI origin values must be non-negative.")
         return value
 
-    @classmethod
     @field_validator("width", "height")
+    @classmethod
     def validate_positive_size(cls, value: int) -> int:
         if value <= 0:
             raise ValueError("ROI width and height must be positive.")
@@ -54,6 +52,76 @@ class InputConfig(BaseConfigModel):
     sample_every_n: int = Field(default=1, gt=0)
 
 
+class PercentileClipConfig(BaseConfigModel):
+    """Параметры обрезки процентилей для визуализации карты глубины"""
+
+    min: float = 2.0
+    max: float = 98.0
+
+    @field_validator("min", "max")
+    @classmethod
+    def validate_percentile_range(cls, value: float) -> float:
+        if not 0.0 <= value <= 100.0:
+            raise ValueError("Depth clip percentiles must be in the range [0, 100]")
+        return float(value)
+
+    @model_validator(mode="after")
+    def validate_percentile_order(self) -> PercentileClipConfig:
+        if self.min >= self.max:
+            raise ValueError("Depth clip percentile minimum must be smaller than maximum")
+        return self
+
+
+class DepthConfig(BaseConfigModel):
+    """Настройки оценки глубины"""
+
+    enabled: bool = True
+    provider: str = "depth_anything_v2"
+    model: str = "depth-anything/Depth-Anything-V2-Small-hf"
+    device: str = "auto"
+    cache_dir: str | None = None
+    use_fp16: bool = False
+    compile_model: bool = False
+    save_raw_depth_npy: bool = True
+    save_depth_colormap: bool = True
+    normalize_depth_for_viz: bool = True
+    clip_percentiles: PercentileClipConfig = Field(default_factory=PercentileClipConfig)
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized != "depth_anything_v2":
+            raise ValueError("Only provider 'depth_anything_v2' is supported at this stage")
+        return normalized
+
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Depth model must not be empty")
+        return normalized
+
+    @field_validator("device")
+    @classmethod
+    def validate_device(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized in {"auto", "cpu", "cuda", "mps"} or normalized.startswith("cuda:"):
+            return normalized
+        raise ValueError(
+            "Depth device must be one of {'auto', 'cpu', 'cuda', 'mps'} or start with 'cuda:'"
+        )
+
+    @field_validator("cache_dir")
+    @classmethod
+    def validate_cache_dir(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
 class OutputConfig(BaseConfigModel):
     """Настройки сохранения артефактов"""
 
@@ -69,8 +137,8 @@ class RuntimeConfig(BaseConfigModel):
 
     log_level: str = "INFO"
 
-    @classmethod
     @field_validator("log_level")
+    @classmethod
     def validate_log_level(cls, value: str) -> str:
         normalized = value.upper()
         allowed_levels = {
@@ -93,11 +161,11 @@ class AppMetaConfig(BaseConfigModel):
     name: str = "scene-analysis"
     debug: bool = True
 
-    @classmethod
     @field_validator("name")
+    @classmethod
     def validate_name(cls, value: str) -> str:
         if not value.strip():
-            raise ValueError("Application name must not be empty.")
+            raise ValueError("Application name must not be empty")
         return value
 
 
@@ -105,6 +173,7 @@ class AppConfig(BaseConfigModel):
     app: AppMetaConfig
     input: InputConfig
     preprocessing: PreprocessingConfig
+    depth: DepthConfig
     output: OutputConfig
     runtime: RuntimeConfig
 
@@ -118,6 +187,6 @@ def load_config(path: Path) -> AppConfig:
         raw_data: Any = yaml.safe_load(file) or {}
 
     if not isinstance(raw_data, dict):
-        raise ValueError("Configuration file must contain a YAML mapping.")
+        raise ValueError("Configuration file must contain a YAML mapping")
 
     return AppConfig.model_validate(raw_data)

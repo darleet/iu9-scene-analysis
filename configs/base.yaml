@@ -12,14 +12,29 @@ preprocessing:
   resize_height: 360
   normalize_to_float: false
   roi:
-    enabled: false
+    enabled: true
     x: 0
-    y: 0
-    width: 640
-    height: 360
+    y: 90
+    width: 720
+    height: 600
+
+depth:
+  enabled: true
+  provider: "depth_anything_v2"
+  model: "depth-anything/Depth-Anything-V2-Small-hf"
+  device: "auto"
+  cache_dir: null
+  use_fp16: false
+  compile_model: false
+  save_raw_depth_npy: true
+  save_depth_colormap: true
+  normalize_depth_for_viz: true
+  clip_percentiles:
+    min: 2.0
+    max: 98.0
 
 output:
-  output_dir: "data/artifacts/run_001"
+  output_dir: "data/artifacts/run_002"
   save_original_frames: true
   save_preprocessed_frames: true
   save_overlay_frames: true

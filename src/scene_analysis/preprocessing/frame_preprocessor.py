@@ -16,11 +16,11 @@ class FramePreprocessor:
         self.config = config
 
     def process(self, image: np.ndarray) -> np.ndarray:
-        """Обрезать, изменить размер и при необходимости нормализовать изображение"""
+        """Обрезать, изменить размер, нормализовать изображение"""
         if not isinstance(image, np.ndarray) or image.size == 0:
-            raise ValueError("Input image must be a non-empty numpy array.")
+            raise ValueError("Input image must be a non-empty numpy array")
         if image.ndim not in (2, 3):
-            raise ValueError("Input image must be 2D or 3D.")
+            raise ValueError("Input image must be 2D or 3D")
 
         working_image = image
         if self.config.roi.enabled:
@@ -53,6 +53,6 @@ class FramePreprocessor:
             processed = ensure_uint8_image(resized)
 
         if processed.shape[0] != self.config.resize_height or processed.shape[1] != self.config.resize_width:
-            raise RuntimeError("Preprocessing produced an image with unexpected size.")
+            raise RuntimeError("Preprocessing produced an image with unexpected size")
 
         return processed

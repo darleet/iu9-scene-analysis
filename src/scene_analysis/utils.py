@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -49,6 +50,13 @@ def ensure_uint8_image(image: np.ndarray) -> np.ndarray:
     return np.clip(converted, 0.0, 255.0).astype(np.uint8)
 
 
+def ensure_float32_array(value: np.ndarray) -> np.ndarray:
+    """Безопасно привести массив к типу float32"""
+    if not isinstance(value, np.ndarray) or value.size == 0:
+        raise ValueError("Value must be a non-empty numpy array")
+    return np.asarray(value, dtype=np.float32)
+
+
 def maybe_colorize_mask(
     mask: np.ndarray | None,
     color: tuple[int, int, int] = (0, 255, 0),
@@ -80,3 +88,32 @@ def timestamp_to_str(timestamp_ms: float) -> str:
     minutes, remainder = divmod(remainder, 60_000)
     seconds, milliseconds = divmod(remainder, 1_000)
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
+
+
+def shorten_model_name(model_name: str | None) -> str:
+    """Вернуть короткое имя модели"""
+    if model_name is None:
+        return "n/a"
+    normalized = model_name.strip()
+    if not normalized:
+        return "n/a"
+    return normalized.rsplit("/", maxsplit=1)[-1]
+
+
+def to_serializable_metadata(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, np.ndarray):
+        return {
+            "shape": list(value.shape),
+            "dtype": str(value.dtype),
+        }
+    if isinstance(value, dict):
+        return {str(key): to_serializable_metadata(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [to_serializable_metadata(item) for item in value]
+    return str(value)

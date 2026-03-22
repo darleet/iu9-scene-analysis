@@ -1,5 +1,3 @@
-"""Минимальная реализация пайплайна"""
-
 from __future__ import annotations
 
 import cv2
@@ -11,12 +9,10 @@ from scene_analysis.obstacle_map.base import ObstacleMapBuilder
 from scene_analysis.pipeline.base import SceneAnalysisPipeline
 from scene_analysis.preprocessing.frame_preprocessor import FramePreprocessor
 from scene_analysis.types import DepthResult, DynamicObject, FrameData, ObstacleMapResult, SceneAnalysisResult
-from scene_analysis.utils import ensure_uint8_image, timestamp_to_str
+from scene_analysis.utils import ensure_uint8_image, shorten_model_name, timestamp_to_str
 
 
 class MVPSceneAnalysisPipeline(SceneAnalysisPipeline):
-    """MVP-пайплайн с блоками обработки"""
-
     def __init__(
         self,
         preprocessor: FramePreprocessor,
@@ -30,7 +26,6 @@ class MVPSceneAnalysisPipeline(SceneAnalysisPipeline):
         self.dynamic_detector = dynamic_detector
 
     def process_frame(self, frame: FrameData) -> SceneAnalysisResult:
-        """Запустить полный пайплайн для одного кадра"""
         preprocessed_image = self.preprocessor.process(frame.image)
         depth_result = self.depth_estimator.predict(preprocessed_image)
         obstacle_result = self.obstacle_map_builder.build(depth_result, preprocessed_image)
@@ -48,6 +43,9 @@ class MVPSceneAnalysisPipeline(SceneAnalysisPipeline):
             "obstacle_status": obstacle_result.metadata.get("status", "unknown"),
             "dynamic_count": len(dynamic_objects),
             "preprocessed_shape": list(preprocessed_image.shape),
+            "depth_model": depth_result.metadata.get("model"),
+            "depth_model_short": shorten_model_name(depth_result.metadata.get("model")),
+            "depth_scale_type": depth_result.metadata.get("scale_type", "unknown"),
         }
 
         return SceneAnalysisResult(
@@ -79,10 +77,15 @@ class MVPSceneAnalysisPipeline(SceneAnalysisPipeline):
         lines = [
             f"Frame: {frame.frame_index}",
             f"Timestamp: {timestamp_to_str(frame.timestamp_ms)}",
-            f"Depth: {depth.metadata.get('status', 'unknown')}",
-            f"Obstacle map: {obstacle_map.metadata.get('status', 'unknown')}",
+            f"Model: {shorten_model_name(depth.metadata.get('model'))}",
+            f"Scale: {depth.metadata.get('scale_type', 'unknown')}",
+            self._format_inference_line(depth),
+            self._format_depth_range_line(depth),
             f"Dynamic objects: {len(dynamic_objects)}",
         ]
+        if depth.depth_map is None:
+            lines.insert(5, f"Depth: unavailable ({depth.metadata.get('status', 'unknown')})")
+        lines.append(f"Obstacle map: {obstacle_map.metadata.get('status', 'unknown')}")
 
         y_position = 28
         for line in lines:
@@ -109,3 +112,18 @@ class MVPSceneAnalysisPipeline(SceneAnalysisPipeline):
             y_position += 26
 
         return overlay
+
+    @staticmethod
+    def _format_inference_line(depth: DepthResult) -> str:
+        inference_ms = depth.metadata.get("inference_ms")
+        if inference_ms is None:
+            return "Inference: n/a"
+        return f"Inference: {float(inference_ms):.2f} ms"
+
+    @staticmethod
+    def _format_depth_range_line(depth: DepthResult) -> str:
+        depth_min = depth.metadata.get("depth_min")
+        depth_max = depth.metadata.get("depth_max")
+        if depth.depth_map is None or depth_min is None or depth_max is None:
+            return "Depth range: unavailable"
+        return f"Depth range: {float(depth_min):.3f} .. {float(depth_max):.3f}"
