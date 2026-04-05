@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import math
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
+import cv2
 import numpy as np
 
 
@@ -115,6 +118,35 @@ def apply_binary_roi(values: np.ndarray, mask: np.ndarray) -> np.ndarray:
     return (array * (roi_mask > 0).astype(np.float32)).astype(np.float32, copy=False)
 
 
+def maybe_resize_float_map(values: np.ndarray, output_shape: tuple[int, int]) -> np.ndarray:
+    """Масштабировать 2D float-карту до нужной формы"""
+    array = ensure_float32_array(values)
+    if array.ndim != 2:
+        raise ValueError("Float map must be 2D for resizing")
+    target_height, target_width = output_shape
+    if target_height <= 0 or target_width <= 0:
+        raise ValueError("Output shape must contain positive dimensions")
+    if array.shape == (target_height, target_width):
+        return array.copy()
+    resized = cv2.resize(array, (target_width, target_height), interpolation=cv2.INTER_LINEAR)
+    return resized.astype(np.float32, copy=False)
+
+
+def list_files_by_extension(directory: Path, extension: str) -> list[Path]:
+    """Рекурсивно собрать файлы с указанным расширением"""
+    normalized_directory = Path(directory).expanduser()
+    normalized_extension = extension.lower()
+    if not normalized_extension.startswith("."):
+        normalized_extension = f".{normalized_extension}"
+    if not normalized_directory.exists():
+        return []
+    return sorted(
+        path
+        for path in normalized_directory.rglob(f"*{normalized_extension}")
+        if path.is_file()
+    )
+
+
 def maybe_colorize_mask(
     mask: np.ndarray | None,
     color: tuple[int, int, int] = (0, 255, 0),
@@ -158,20 +190,29 @@ def shorten_model_name(model_name: str | None) -> str:
     return normalized.rsplit("/", maxsplit=1)[-1]
 
 
-def to_serializable_metadata(value: Any) -> Any:
-    if value is None or isinstance(value, (str, int, float, bool)):
+def to_serializable(value: Any) -> Any:
+    """Подготовить произвольный объект к JSON/CSV сериализации"""
+    if value is None or isinstance(value, (str, int, bool)):
         return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, np.generic):
-        return value.item()
+        return to_serializable(value.item())
     if isinstance(value, np.ndarray):
         return {
             "shape": list(value.shape),
             "dtype": str(value.dtype),
         }
+    if is_dataclass(value):
+        return to_serializable(asdict(value))
     if isinstance(value, dict):
-        return {str(key): to_serializable_metadata(item) for key, item in value.items()}
+        return {str(key): to_serializable(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
-        return [to_serializable_metadata(item) for item in value]
+        return [to_serializable(item) for item in value]
     return str(value)
+
+
+def to_serializable_metadata(value: Any) -> Any:
+    return to_serializable(value)

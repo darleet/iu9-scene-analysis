@@ -34,6 +34,21 @@ def _validate_odd_kernel(value: int, field_name: str) -> int:
     return normalized
 
 
+def _normalize_path(value: Path | str | None) -> Path | None:
+    if value is None:
+        return None
+    return Path(value).expanduser()
+
+
+def _normalize_extension(value: str) -> str:
+    normalized = value.strip().lower()
+    if not normalized:
+        raise ValueError("File extension must not be empty")
+    if not normalized.startswith("."):
+        normalized = f".{normalized}"
+    return normalized
+
+
 class BaseConfigModel(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
@@ -77,6 +92,11 @@ class InputConfig(BaseConfigModel):
     source_path: Path
     max_frames: int | None = Field(default=100, gt=0)
     sample_every_n: int = Field(default=1, gt=0)
+
+    @field_validator("source_path", mode="before")
+    @classmethod
+    def normalize_source_path(cls, value: Path | str) -> Path:
+        return Path(value).expanduser()
 
 
 class PercentileClipConfig(BaseConfigModel):
@@ -196,7 +216,7 @@ class RoadSuppressionConfig(BaseConfigModel):
     bottom_strip_ratio: float = 0.30
     row_smooth_kernel: int = 11
     baseline_quantile: float = 0.60
-    suppression_strength: float = 0.85
+    suppression_strength: float = 1.0
     min_row_activation: float = 0.03
     preserve_vertical_edges: bool = True
     edge_weight: float = 0.35
@@ -209,7 +229,13 @@ class RoadSuppressionConfig(BaseConfigModel):
             raise ValueError("Only road_suppression mode 'row_baseline' is supported")
         return normalized
 
-    @field_validator("bottom_strip_ratio", "baseline_quantile", "min_row_activation", "suppression_strength", "edge_weight")
+    @field_validator(
+        "bottom_strip_ratio",
+        "baseline_quantile",
+        "min_row_activation",
+        "suppression_strength",
+        "edge_weight",
+    )
     @classmethod
     def validate_unit_range(cls, value: float, info: Any) -> float:
         return _validate_probability_value(value, f"Road suppression '{info.field_name}'")
@@ -272,6 +298,107 @@ class ObstacleHeatmapConfig(BaseConfigModel):
     visualization: HeatmapVisualizationConfig = Field(default_factory=HeatmapVisualizationConfig)
 
 
+class EvaluationDatasetConfig(BaseConfigModel):
+    """Настройки локального layout датасета для evaluation."""
+
+    name: str = "road_obstacle_21"
+    root_dir: Path = Path("data/datasets/road_obstacle_21")
+    images_dir: Path = Path("images")
+    masks_dir: Path = Path("masks")
+    predictions_dir: Path = Path("predictions")
+    split_file: Path | None = None
+    file_extension_images: str = ".png"
+    file_extension_masks: str = ".png"
+    file_extension_predictions: str = ".npy"
+
+    @field_validator("name")
+    @classmethod
+    def validate_dataset_name(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not normalized:
+            raise ValueError("Evaluation dataset name must not be empty")
+        return normalized
+
+    @field_validator("root_dir", "images_dir", "masks_dir", "predictions_dir", "split_file", mode="before")
+    @classmethod
+    def normalize_paths(cls, value: Path | str | None) -> Path | None:
+        return _normalize_path(value)
+
+    @field_validator("file_extension_images", "file_extension_masks", "file_extension_predictions")
+    @classmethod
+    def normalize_extensions(cls, value: str) -> str:
+        return _normalize_extension(value)
+
+
+class EvaluationLabelsConfig(BaseConfigModel):
+    """Настройки кодов разметки obstacle/background/ignore"""
+
+    obstacle_values: list[int] = Field(default_factory=lambda: [1])
+    background_values: list[int] = Field(default_factory=lambda: [0])
+    ignore_values: list[int] = Field(default_factory=lambda: [255])
+
+    @field_validator("obstacle_values", "background_values", "ignore_values")
+    @classmethod
+    def validate_non_empty_values(cls, value: list[int], info: Any) -> list[int]:
+        normalized = [int(item) for item in value]
+        if not normalized:
+            raise ValueError(f"Evaluation labels '{info.field_name}' must not be empty")
+        return normalized
+
+
+class EvaluationPredictionConfig(BaseConfigModel):
+    """Настройки подготовки prediction heatmap перед подсчетом метрики"""
+
+    resize_to_gt: bool = True
+    clip_to_unit_range: bool = True
+    allow_png_heatmaps: bool = False
+
+
+class EvaluationMetricsConfig(BaseConfigModel):
+    """Настройки метрик evaluation"""
+
+    average_precision: bool = True
+
+
+class EvaluationOutputsConfig(BaseConfigModel):
+    """Настройки сохранения evaluation артефактов"""
+
+    output_dir: Path = Path("data/artifacts/eval_run_001")
+    save_pr_curve_png: bool = True
+    save_per_sample_csv: bool = True
+    save_summary_json: bool = True
+    save_hard_examples: bool = True
+    hard_examples_top_k: int = Field(default=20, gt=0)
+
+    @field_validator("output_dir", mode="before")
+    @classmethod
+    def normalize_output_dir(cls, value: Path | str) -> Path:
+        return Path(value).expanduser()
+
+
+class EvaluationConfig(BaseConfigModel):
+    """Полная конфигурация evaluation obstacle heatmap"""
+
+    enabled: bool = True
+    dataset: EvaluationDatasetConfig = Field(default_factory=EvaluationDatasetConfig)
+    labels: EvaluationLabelsConfig = Field(default_factory=EvaluationLabelsConfig)
+    prediction: EvaluationPredictionConfig = Field(default_factory=EvaluationPredictionConfig)
+    metrics: EvaluationMetricsConfig = Field(default_factory=EvaluationMetricsConfig)
+    outputs: EvaluationOutputsConfig = Field(default_factory=EvaluationOutputsConfig)
+
+    @model_validator(mode="after")
+    def validate_prediction_extension(self) -> EvaluationConfig:
+        prediction_extension = self.dataset.file_extension_predictions
+        if prediction_extension == ".npy":
+            return self
+        if prediction_extension == ".png" and self.prediction.allow_png_heatmaps:
+            return self
+        raise ValueError(
+            "Evaluation dataset.file_extension_predictions must be '.npy' or '.png' with "
+            "prediction.allow_png_heatmaps=true"
+        )
+
+
 class OutputConfig(BaseConfigModel):
     """Настройки сохранения артефактов"""
 
@@ -280,6 +407,11 @@ class OutputConfig(BaseConfigModel):
     save_preprocessed_frames: bool = True
     save_overlay_frames: bool = True
     save_jsonl: bool = True
+
+    @field_validator("output_dir", mode="before")
+    @classmethod
+    def normalize_output_dir(cls, value: Path | str) -> Path:
+        return Path(value).expanduser()
 
 
 class RuntimeConfig(BaseConfigModel):
@@ -325,6 +457,7 @@ class AppConfig(BaseConfigModel):
     preprocessing: PreprocessingConfig
     depth: DepthConfig
     obstacle_heatmap: ObstacleHeatmapConfig = Field(default_factory=ObstacleHeatmapConfig)
+    evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     output: OutputConfig
     runtime: RuntimeConfig
 

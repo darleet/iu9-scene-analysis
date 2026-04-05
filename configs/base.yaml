@@ -14,9 +14,9 @@ preprocessing:
   roi:
     enabled: true
     x: 0
-    y: 90
-    width: 720
-    height: 600
+    y: 0
+    width: 1920
+    height: 1080
 
 depth:
   enabled: true
@@ -68,8 +68,38 @@ obstacle_heatmap:
     save_overlay_png: true
     colormap: "inferno"
 
+evaluation:
+  enabled: true
+  dataset:
+    name: "road_obstacle_21"
+    root_dir: "data/datasets/road_obstacle_21"
+    images_dir: "images"
+    masks_dir: "masks"
+    predictions_dir: "predictions"
+    split_file: null
+    file_extension_images: ".png"
+    file_extension_masks: ".png"
+    file_extension_predictions: ".npy"
+  labels:
+    obstacle_values: [1]
+    background_values: [0]
+    ignore_values: [255]
+  prediction:
+    resize_to_gt: true
+    clip_to_unit_range: true
+    allow_png_heatmaps: false
+  metrics:
+    average_precision: true
+  outputs:
+    output_dir: "data/artifacts/eval_run_001"
+    save_pr_curve_png: true
+    save_per_sample_csv: true
+    save_summary_json: true
+    save_hard_examples: true
+    hard_examples_top_k: 20
+
 output:
-  output_dir: "data/artifacts/run_003"
+  output_dir: "data/artifacts/run_004"
   save_original_frames: true
   save_preprocessed_frames: true
   save_overlay_frames: true

@@ -135,29 +135,34 @@ class DepthToObstacleHeatmapBuilder(ObstacleHeatmapBuilder):
 
         strip_height = max(1, int(round(height * suppression_config.bottom_strip_ratio)))
         strip_start = max(0, height - strip_height)
-
-        for row_index in range(strip_start, height):
+        percentile = suppression_config.baseline_quantile * 100.0
+        for row_index in range(height):
             row_mask = roi_mask[row_index] > 0.0
             if not np.any(row_mask):
-                baseline[row_index] = baseline[row_index - 1] if row_index > strip_start else 0.0
+                baseline[row_index] = baseline[row_index - 1] if row_index > 0 else 0.0
                 continue
 
             row_values = near_score[row_index][row_mask]
-            percentile = suppression_config.baseline_quantile * 100.0
             fallback = float(np.mean(row_values)) if row_values.size else 0.0
             baseline[row_index] = safe_percentile(row_values, percentile, fallback=fallback)
 
         smooth_kernel = make_odd_kernel(suppression_config.row_smooth_kernel)
-        strip = baseline[strip_start:].reshape(-1, 1)
-        if strip.shape[0] > 1 and smooth_kernel > 1:
-            strip = cv2.GaussianBlur(
-                strip,
+        baseline_column = baseline.reshape(-1, 1)
+        if baseline_column.shape[0] > 1 and smooth_kernel > 1:
+            baseline_column = cv2.GaussianBlur(
+                baseline_column,
                 (1, smooth_kernel),
                 sigmaX=0,
                 sigmaY=0,
                 borderType=cv2.BORDER_REPLICATE,
             )
-        baseline[strip_start:] = strip.reshape(-1)
+        baseline = baseline_column.reshape(-1)
+
+        baseline = np.maximum.accumulate(baseline).astype(np.float32, copy=False)
+        if strip_start > 0:
+            upper_weights = np.linspace(0.0, 1.0, num=strip_start, endpoint=False, dtype=np.float32)
+            baseline[:strip_start] *= upper_weights
+
         baseline[baseline < suppression_config.min_row_activation] = 0.0
         return baseline
 

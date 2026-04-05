@@ -58,70 +58,170 @@ class ArtifactWriter:
             self._jsonl_file = self.results_path.open("a", encoding="utf-8")
 
     def save_original(self, frame: FrameData) -> None:
-        """Сохранить исходный кадр в PNG."""
         if not self.output_config.save_original_frames:
             return
-        self._write_image(self.original_dir / self._frame_filename(frame.frame_index), frame.image)
+        self.save_original_with_id(self._frame_stem(frame.frame_index), frame.image)
+
+    def save_original_with_id(self, artifact_id: str, image: np.ndarray) -> None:
+        if not self.output_config.save_original_frames:
+            return
+        self._write_image(self.original_dir / self._image_filename(artifact_id), image)
 
     def save_preprocessed(self, frame_index: int, image: np.ndarray) -> None:
-        """Сохранить препроцессированный кадр в PNG."""
         if not self.output_config.save_preprocessed_frames:
             return
-        self._write_image(self.preprocessed_dir / self._frame_filename(frame_index), image)
+        self.save_preprocessed_with_id(self._frame_stem(frame_index), image)
+
+    def save_preprocessed_with_id(self, artifact_id: str, image: np.ndarray) -> None:
+        if not self.output_config.save_preprocessed_frames:
+            return
+        self._write_image(self.preprocessed_dir / self._image_filename(artifact_id), image)
 
     def save_depth_npy(self, frame_index: int, depth_map: np.ndarray) -> None:
-        """Сохранить raw depth map в формате NumPy."""
         if not self.depth_config.save_raw_depth_npy:
             return
-        np.save(self.depth_npy_dir / self._depth_filename(frame_index, ".npy"), ensure_float32_array(depth_map))
+        self.save_depth_npy_with_id(self._frame_stem(frame_index), depth_map)
+
+    def save_depth_npy_with_id(self, artifact_id: str, depth_map: np.ndarray) -> None:
+        if not self.depth_config.save_raw_depth_npy:
+            return
+        np.save(self.depth_npy_dir / self._array_filename(artifact_id, ".npy"), ensure_float32_array(depth_map))
 
     def save_depth_colormap(self, frame_index: int, image: np.ndarray) -> None:
-        """Сохранить colorized depth map в PNG."""
         if not self.depth_config.save_depth_colormap:
             return
-        self._write_image(self.depth_colormap_dir / self._depth_filename(frame_index, ".png"), image)
+        self.save_depth_colormap_with_id(self._frame_stem(frame_index), image)
+
+    def save_depth_colormap_with_id(self, artifact_id: str, image: np.ndarray) -> None:
+        if not self.depth_config.save_depth_colormap:
+            return
+        self._write_image(self.depth_colormap_dir / self._image_filename(artifact_id), image)
 
     def save_obstacle_heatmap_npy(self, frame_index: int, heatmap: np.ndarray) -> None:
-        """Сохранить obstacle heatmap в формате NumPy."""
         if not self.obstacle_heatmap_config.visualization.save_heatmap_npy:
             return
-        np.save(self.heatmap_npy_dir / self._depth_filename(frame_index, ".npy"), ensure_float32_array(heatmap))
+        self.save_obstacle_heatmap_npy_with_id(self._frame_stem(frame_index), heatmap)
+
+    def save_obstacle_heatmap_npy_with_id(self, artifact_id: str, heatmap: np.ndarray) -> None:
+        if not self.obstacle_heatmap_config.visualization.save_heatmap_npy:
+            return
+        np.save(self.heatmap_npy_dir / self._array_filename(artifact_id, ".npy"), ensure_float32_array(heatmap))
 
     def save_obstacle_heatmap_png(self, frame_index: int, image: np.ndarray) -> None:
-        """Сохранить визуализацию obstacle heatmap в PNG."""
         if not self.obstacle_heatmap_config.visualization.save_heatmap_png:
             return
-        self._write_image(self.heatmap_png_dir / self._depth_filename(frame_index, ".png"), image)
+        self.save_obstacle_heatmap_png_with_id(self._frame_stem(frame_index), image)
+
+    def save_obstacle_heatmap_png_with_id(self, artifact_id: str, image: np.ndarray) -> None:
+        if not self.obstacle_heatmap_config.visualization.save_heatmap_png:
+            return
+        self._write_image(self.heatmap_png_dir / self._image_filename(artifact_id), image)
 
     def save_overlay(self, frame_index: int, image: np.ndarray) -> None:
-        """Сохранить overlay-кадр в PNG."""
         if not self.output_config.save_overlay_frames:
             return
         if not self.obstacle_heatmap_config.visualization.save_overlay_png:
             return
-        self._write_image(self.overlay_dir / self._frame_filename(frame_index), image)
+        self.save_overlay_with_id(self._frame_stem(frame_index), image)
+
+    def save_overlay_with_id(self, artifact_id: str, image: np.ndarray) -> None:
+        if not self.output_config.save_overlay_frames:
+            return
+        if not self.obstacle_heatmap_config.visualization.save_overlay_png:
+            return
+        self._write_image(self.overlay_dir / self._image_filename(artifact_id), image)
 
     def append_result(self, result: SceneAnalysisResult) -> None:
-        """Добавить одну JSONL-запись с метаданными и сохранить артефакты."""
-        frame_index = result.frame.frame_index
+        artifact_id = self._frame_stem(result.frame.frame_index)
 
         if result.depth.depth_map is not None:
             if self.depth_config.save_raw_depth_npy:
-                self.save_depth_npy(frame_index, result.depth.depth_map)
+                self.save_depth_npy_with_id(artifact_id, result.depth.depth_map)
             if self.depth_config.save_depth_colormap:
-                self.save_depth_colormap(frame_index, self._build_depth_colormap(result.depth.depth_map))
+                self.save_depth_colormap_with_id(artifact_id, self._build_depth_colormap(result.depth.depth_map))
 
         if result.obstacle_heatmap.heatmap is not None:
-            self.save_obstacle_heatmap_npy(frame_index, result.obstacle_heatmap.heatmap)
+            self.save_obstacle_heatmap_npy_with_id(artifact_id, result.obstacle_heatmap.heatmap)
         if result.obstacle_heatmap.heatmap_visualization is not None:
-            self.save_obstacle_heatmap_png(frame_index, result.obstacle_heatmap.heatmap_visualization)
+            self.save_obstacle_heatmap_png_with_id(artifact_id, result.obstacle_heatmap.heatmap_visualization)
         if result.overlay_image is not None:
-            self.save_overlay(frame_index, result.overlay_image)
+            self.save_overlay_with_id(artifact_id, result.overlay_image)
 
         if not self.output_config.save_jsonl or self._jsonl_file is None:
             return
 
-        record = {
+        record = self._build_record(result=result, artifact_id=artifact_id)
+        self._jsonl_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+        self._jsonl_file.flush()
+
+    def append_result_with_id(self, artifact_id: str, result: SceneAnalysisResult) -> None:
+        self.save_original_with_id(artifact_id, result.frame.image)
+        self.save_preprocessed_with_id(artifact_id, result.preprocessed_image)
+
+        if result.depth.depth_map is not None:
+            if self.depth_config.save_raw_depth_npy:
+                self.save_depth_npy_with_id(artifact_id, result.depth.depth_map)
+            if self.depth_config.save_depth_colormap:
+                self.save_depth_colormap_with_id(artifact_id, self._build_depth_colormap(result.depth.depth_map))
+
+        if result.obstacle_heatmap.heatmap is not None:
+            self.save_obstacle_heatmap_npy_with_id(artifact_id, result.obstacle_heatmap.heatmap)
+        if result.obstacle_heatmap.heatmap_visualization is not None:
+            self.save_obstacle_heatmap_png_with_id(artifact_id, result.obstacle_heatmap.heatmap_visualization)
+        if result.overlay_image is not None:
+            self.save_overlay_with_id(artifact_id, result.overlay_image)
+
+        if not self.output_config.save_jsonl or self._jsonl_file is None:
+            return
+
+        record = self._build_record(result=result, artifact_id=artifact_id)
+        self._jsonl_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+        self._jsonl_file.flush()
+
+    def close(self) -> None:
+        if self._jsonl_file is not None:
+            self._jsonl_file.close()
+            self._jsonl_file = None
+
+    @staticmethod
+    def _frame_stem(frame_index: int) -> str:
+        return f"frame_{frame_index:06d}"
+
+    @staticmethod
+    def _image_filename(artifact_id: str) -> str:
+        return f"{artifact_id}.png"
+
+    @staticmethod
+    def _array_filename(artifact_id: str, suffix: str) -> str:
+        return f"{artifact_id}{suffix}"
+
+    def _write_image(self, path: Path, image: np.ndarray) -> None:
+        prepared = self._prepare_image_for_saving(image)
+        if not cv2.imwrite(str(path), prepared):
+            raise IOError(f"Failed to save image: {path}")
+
+    @staticmethod
+    def _prepare_image_for_saving(image: np.ndarray) -> np.ndarray:
+        if not isinstance(image, np.ndarray) or image.size == 0:
+            raise ValueError("Image must be a non-empty numpy array")
+
+        prepared = ensure_uint8_image(image)
+        if prepared.ndim == 3 and prepared.shape[2] == 1:
+            return prepared[:, :, 0]
+        return prepared
+
+    @staticmethod
+    def _describe_array(value: np.ndarray | None) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        return {
+            "shape": list(value.shape),
+            "dtype": str(value.dtype),
+        }
+
+    def _build_record(self, result: SceneAnalysisResult, artifact_id: str) -> dict[str, Any]:
+        return {
+            "artifact_id": artifact_id,
             "frame": {
                 "frame_index": result.frame.frame_index,
                 "timestamp_ms": result.frame.timestamp_ms,
@@ -165,46 +265,6 @@ class ArtifactWriter:
                 "metadata": to_serializable_metadata(result.obstacle_heatmap.metadata),
             },
             "metadata": to_serializable_metadata(result.metadata),
-        }
-        self._jsonl_file.write(json.dumps(record, ensure_ascii=False) + "\n")
-        self._jsonl_file.flush()
-
-    def close(self) -> None:
-        """Закрыть открытые файлы."""
-        if self._jsonl_file is not None:
-            self._jsonl_file.close()
-            self._jsonl_file = None
-
-    @staticmethod
-    def _frame_filename(frame_index: int) -> str:
-        return f"frame_{frame_index:06d}.png"
-
-    @staticmethod
-    def _depth_filename(frame_index: int, suffix: str) -> str:
-        return f"frame_{frame_index:06d}{suffix}"
-
-    def _write_image(self, path: Path, image: np.ndarray) -> None:
-        prepared = self._prepare_image_for_saving(image)
-        if not cv2.imwrite(str(path), prepared):
-            raise IOError(f"Failed to save image: {path}")
-
-    @staticmethod
-    def _prepare_image_for_saving(image: np.ndarray) -> np.ndarray:
-        if not isinstance(image, np.ndarray) or image.size == 0:
-            raise ValueError("Image must be a non-empty numpy array")
-
-        prepared = ensure_uint8_image(image)
-        if prepared.ndim == 3 and prepared.shape[2] == 1:
-            return prepared[:, :, 0]
-        return prepared
-
-    @staticmethod
-    def _describe_array(value: np.ndarray | None) -> dict[str, Any] | None:
-        if value is None:
-            return None
-        return {
-            "shape": list(value.shape),
-            "dtype": str(value.dtype),
         }
 
     def _build_depth_colormap(self, depth_map: np.ndarray) -> np.ndarray:
