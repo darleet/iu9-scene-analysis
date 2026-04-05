@@ -1,8 +1,8 @@
 # Scene Analysis
 
-На данном этапе в приложение подключена реальная depth модель через Hugging Face Transformers API
+Приложение получает monocular depth map и преобразует ее в непрерывную `obstacle heatmap`.
 
-`video -> frame reading -> preprocessing -> Depth Anything V2 -> artifact saving`
+`video -> frame reading -> preprocessing -> Depth Anything V2 -> road suppression -> obstacle heatmap -> artifact saving`
 
 ## Стек
 
@@ -44,27 +44,33 @@ poetry run scene-analysis run-video \
   --depth-model depth-anything/Depth-Anything-V2-Small-hf
 ```
 
-Дополнительно можно переопределить устройство и fp16:
+Дополнительно можно переопределить параметры фильтров:
 
 ```bash
 poetry run scene-analysis run-video \
   --config configs/base.yaml \
-  --device cuda \
-  --fp16
+  --suppression-strength 0.9 \
+  --bottom-strip-ratio 0.35 \
+  --gamma 1.1
 ```
 
 ## Что уже реализовано
 
-- загрузка и валидация YAML-конфига;
-- чтение видео через OpenCV;
-- базовый препроцессинг кадров: ROI, resize, normalization;
-- единые типизированные dataclass-модели результатов; 
-- интеграция `Depth Anything V2` через `AutoImageProcessor` и `AutoModelForDepthEstimation`;
-- обработка глубины через `DepthEstimator`;
-- сохранение сырого файла глубины `.npy` и цветовой карты `.png`;
-- сохранение PNG-артефактов и JSONL-результатов;
-- CLI на Typer;
-- базовые тесты.
+- загрузка и валидация YAML-конфига для obstacle heatmap;
+- inference monocular depth через `Depth Anything V2`;
+- преобразование depth map в `near-score`;
+- подавление дороги и опорной поверхности через baseline;
+- усиление вертикальных препятствий над дорогой;
+- сглаживание и очистка итоговой obstacle heatmap;
+- сохранение `obstacle_heatmap_npy/frame_XXXXXX.npy`;
+- сохранение `obstacle_heatmap_png/frame_XXXXXX.png`;
+- сохранение overlay с obstacle heatmap;
+- сохранение `results.jsonl` с metadata по depth и obstacle heatmap.
+
+## Что важно
+
+- отдельные объекты не детектируются;
+- дорога подавляется, а не выделяется как класс;
 
 ## Поддерживаемые модели
 
@@ -78,19 +84,15 @@ poetry run scene-analysis run-video \
 - `depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf`
 - `depth-anything/Depth-Anything-V2-Metric-Outdoor-Base-hf`
 
-## Что будет дальше
-
-- генерация карты глубины;
-- детекция динамических объектов;
-- teacher/student архитектура, distillation и training pipeline.
-
 ## Результат запуска
 
 После выполнения команды в `output.output_dir` будут сохранены:
 
 - исходные кадры;
 - обработанные кадры;
-- кадры с оверлеем;
+- кадры с overlay;
 - `depth_npy/frame_XXXXXX.npy`;
 - `depth_colormap/frame_XXXXXX.png`;
-- `results.jsonl` с метаданными по каждому обработанному кадру.
+- `obstacle_heatmap_npy/frame_XXXXXX.npy`;
+- `obstacle_heatmap_png/frame_XXXXXX.png`;
+- `results.jsonl` с metadata по каждому обработанному кадру.

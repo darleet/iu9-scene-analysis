@@ -4,27 +4,37 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
-from scene_analysis.types import DepthResult, ObstacleMapResult
+from scene_analysis.config import ObstacleHeatmapConfig
+from scene_analysis.types import DepthResult, ObstacleHeatmapResult
 
 
-class ObstacleMapBuilder(ABC):
-    """Абстрактный интерфейс генератора карты препятствий"""
-
+class ObstacleHeatmapBuilder(ABC):
     @abstractmethod
-    def build(self, depth: DepthResult, image: np.ndarray) -> ObstacleMapResult:
-        """Построить карту препятствий для текущего кадра"""
+    def build(self, depth: DepthResult, image: np.ndarray) -> ObstacleHeatmapResult:
+        """Построить obstacle heatmap для текущего кадра"""
 
 
-class DummyObstacleMapBuilder(ObstacleMapBuilder):
-    """Генератор карты препятствий (заглушка)"""
+class DummyObstacleHeatmapBuilder(ObstacleHeatmapBuilder):
+    """Генератор obstacle heatmap (заглушка)"""
 
-    def build(self, depth: DepthResult, image: np.ndarray) -> ObstacleMapResult:
-        return ObstacleMapResult(
-            obstacle_mask=None,
-            occupancy_grid=None,
-            costmap=None,
+    def build(self, depth: DepthResult, image: np.ndarray) -> ObstacleHeatmapResult:
+        return ObstacleHeatmapResult(
+            heatmap=None,
+            heatmap_visualization=None,
+            overlay_image=None,
             metadata={
-                "status": "dummy",
-                "message": "Obstacle map builder is not connected yet",
+                "status": "disabled",
+                "depth_available": depth.depth_map is not None,
+                "scale_type": depth.metadata.get("scale_type", "unknown"),
+                "message": "Obstacle heatmap builder is disabled",
             },
         )
+
+
+def create_obstacle_heatmap_builder(config: ObstacleHeatmapConfig) -> ObstacleHeatmapBuilder:
+    if not config.enabled:
+        return DummyObstacleHeatmapBuilder()
+
+    from scene_analysis.obstacle_map.heatmap_builder import DepthToObstacleHeatmapBuilder
+
+    return DepthToObstacleHeatmapBuilder(config)

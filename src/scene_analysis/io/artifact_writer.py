@@ -7,7 +7,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from scene_analysis.config import DepthConfig, OutputConfig
+from scene_analysis.config import DepthConfig, ObstacleHeatmapConfig, OutputConfig
 from scene_analysis.depth.visualization import colorize_depth_map
 from scene_analysis.types import FrameData, SceneAnalysisResult
 from scene_analysis.utils import (
@@ -20,14 +20,22 @@ from scene_analysis.utils import (
 
 
 class ArtifactWriter:
-    def __init__(self, output_config: OutputConfig, depth_config: DepthConfig) -> None:
+    def __init__(
+        self,
+        output_config: OutputConfig,
+        depth_config: DepthConfig,
+        obstacle_heatmap_config: ObstacleHeatmapConfig,
+    ) -> None:
         self.output_config = output_config
         self.depth_config = depth_config
+        self.obstacle_heatmap_config = obstacle_heatmap_config
         self.output_dir = safe_mkdir(output_config.output_dir)
         self.original_dir = self.output_dir / "original_frames"
         self.preprocessed_dir = self.output_dir / "preprocessed_frames"
         self.depth_npy_dir = self.output_dir / "depth_npy"
         self.depth_colormap_dir = self.output_dir / "depth_colormap"
+        self.heatmap_npy_dir = self.output_dir / "obstacle_heatmap_npy"
+        self.heatmap_png_dir = self.output_dir / "obstacle_heatmap_png"
         self.overlay_dir = self.output_dir / "overlay_frames"
         self.results_path = self.output_dir / "results.jsonl"
         self._jsonl_file = None
@@ -40,53 +48,75 @@ class ArtifactWriter:
             safe_mkdir(self.depth_npy_dir)
         if depth_config.save_depth_colormap:
             safe_mkdir(self.depth_colormap_dir)
-        if output_config.save_overlay_frames:
+        if obstacle_heatmap_config.visualization.save_heatmap_npy:
+            safe_mkdir(self.heatmap_npy_dir)
+        if obstacle_heatmap_config.visualization.save_heatmap_png:
+            safe_mkdir(self.heatmap_png_dir)
+        if output_config.save_overlay_frames and obstacle_heatmap_config.visualization.save_overlay_png:
             safe_mkdir(self.overlay_dir)
         if output_config.save_jsonl:
             self._jsonl_file = self.results_path.open("a", encoding="utf-8")
 
     def save_original(self, frame: FrameData) -> None:
-        """Сохранить исходный кадр в PNG"""
+        """Сохранить исходный кадр в PNG."""
         if not self.output_config.save_original_frames:
             return
         self._write_image(self.original_dir / self._frame_filename(frame.frame_index), frame.image)
 
     def save_preprocessed(self, frame_index: int, image: np.ndarray) -> None:
-        """Сохранить препроцессированный кадр в PNG"""
+        """Сохранить препроцессированный кадр в PNG."""
         if not self.output_config.save_preprocessed_frames:
             return
         self._write_image(self.preprocessed_dir / self._frame_filename(frame_index), image)
 
     def save_depth_npy(self, frame_index: int, depth_map: np.ndarray) -> None:
-        """Сохранить raw depth map в формате NumPy"""
+        """Сохранить raw depth map в формате NumPy."""
         if not self.depth_config.save_raw_depth_npy:
             return
-
-        prepared = ensure_float32_array(depth_map)
-        np.save(self.depth_npy_dir / self._depth_filename(frame_index, ".npy"), prepared)
+        np.save(self.depth_npy_dir / self._depth_filename(frame_index, ".npy"), ensure_float32_array(depth_map))
 
     def save_depth_colormap(self, frame_index: int, image: np.ndarray) -> None:
-        """Сохранить colorized depth map в PNG"""
+        """Сохранить colorized depth map в PNG."""
         if not self.depth_config.save_depth_colormap:
             return
         self._write_image(self.depth_colormap_dir / self._depth_filename(frame_index, ".png"), image)
 
+    def save_obstacle_heatmap_npy(self, frame_index: int, heatmap: np.ndarray) -> None:
+        """Сохранить obstacle heatmap в формате NumPy."""
+        if not self.obstacle_heatmap_config.visualization.save_heatmap_npy:
+            return
+        np.save(self.heatmap_npy_dir / self._depth_filename(frame_index, ".npy"), ensure_float32_array(heatmap))
+
+    def save_obstacle_heatmap_png(self, frame_index: int, image: np.ndarray) -> None:
+        """Сохранить визуализацию obstacle heatmap в PNG."""
+        if not self.obstacle_heatmap_config.visualization.save_heatmap_png:
+            return
+        self._write_image(self.heatmap_png_dir / self._depth_filename(frame_index, ".png"), image)
+
     def save_overlay(self, frame_index: int, image: np.ndarray) -> None:
-        """Сохранить overlay-кадр в PNG"""
+        """Сохранить overlay-кадр в PNG."""
         if not self.output_config.save_overlay_frames:
+            return
+        if not self.obstacle_heatmap_config.visualization.save_overlay_png:
             return
         self._write_image(self.overlay_dir / self._frame_filename(frame_index), image)
 
     def append_result(self, result: SceneAnalysisResult) -> None:
-        """Добавить одну JSONL-запись с метаданными"""
+        """Добавить одну JSONL-запись с метаданными и сохранить артефакты."""
+        frame_index = result.frame.frame_index
+
         if result.depth.depth_map is not None:
             if self.depth_config.save_raw_depth_npy:
-                self.save_depth_npy(result.frame.frame_index, result.depth.depth_map)
+                self.save_depth_npy(frame_index, result.depth.depth_map)
             if self.depth_config.save_depth_colormap:
-                self.save_depth_colormap(
-                    result.frame.frame_index,
-                    self._build_depth_colormap(result.depth.depth_map),
-                )
+                self.save_depth_colormap(frame_index, self._build_depth_colormap(result.depth.depth_map))
+
+        if result.obstacle_heatmap.heatmap is not None:
+            self.save_obstacle_heatmap_npy(frame_index, result.obstacle_heatmap.heatmap)
+        if result.obstacle_heatmap.heatmap_visualization is not None:
+            self.save_obstacle_heatmap_png(frame_index, result.obstacle_heatmap.heatmap_visualization)
+        if result.overlay_image is not None:
+            self.save_overlay(frame_index, result.overlay_image)
 
         if not self.output_config.save_jsonl or self._jsonl_file is None:
             return
@@ -117,29 +147,30 @@ class ArtifactWriter:
                     list(result.depth.confidence_map.shape) if result.depth.confidence_map is not None else None
                 ),
             },
-            "obstacle_map": {
-                "status": result.obstacle_map.metadata.get("status"),
-                "obstacle_mask": self._describe_array(result.obstacle_map.obstacle_mask),
-                "occupancy_grid": self._describe_array(result.obstacle_map.occupancy_grid),
-                "costmap": self._describe_array(result.obstacle_map.costmap),
-                "metadata": to_serializable_metadata(result.obstacle_map.metadata),
+            "obstacle_heatmap": {
+                "status": result.obstacle_heatmap.metadata.get("status"),
+                "heatmap_shape": (
+                    list(result.obstacle_heatmap.heatmap.shape)
+                    if result.obstacle_heatmap.heatmap is not None
+                    else None
+                ),
+                "heatmap_min": result.obstacle_heatmap.metadata.get("heatmap_min"),
+                "heatmap_max": result.obstacle_heatmap.metadata.get("heatmap_max"),
+                "heatmap_mean": result.obstacle_heatmap.metadata.get("heatmap_mean"),
+                "heatmap_nonzero_ratio": result.obstacle_heatmap.metadata.get("heatmap_nonzero_ratio"),
+                "roi_enabled": result.obstacle_heatmap.metadata.get("roi_enabled"),
+                "road_suppression_enabled": result.obstacle_heatmap.metadata.get("road_suppression_enabled"),
+                "suppression_mode": result.obstacle_heatmap.metadata.get("suppression_mode"),
+                "suppression_strength": result.obstacle_heatmap.metadata.get("suppression_strength"),
+                "metadata": to_serializable_metadata(result.obstacle_heatmap.metadata),
             },
-            "dynamic_objects": [
-                {
-                    "track_id": obj.track_id,
-                    "label": obj.label,
-                    "confidence": obj.confidence,
-                    "bbox": list(obj.bbox) if obj.bbox is not None else None,
-                }
-                for obj in result.dynamic_objects
-            ],
             "metadata": to_serializable_metadata(result.metadata),
         }
         self._jsonl_file.write(json.dumps(record, ensure_ascii=False) + "\n")
         self._jsonl_file.flush()
 
     def close(self) -> None:
-        """Закрыть открытые файлы"""
+        """Закрыть открытые файлы."""
         if self._jsonl_file is not None:
             self._jsonl_file.close()
             self._jsonl_file = None

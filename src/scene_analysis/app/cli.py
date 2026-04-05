@@ -9,11 +9,10 @@ from tqdm import tqdm
 
 from scene_analysis.config import AppConfig, load_config
 from scene_analysis.depth.base import create_depth_estimator
-from scene_analysis.dynamic.base import DummyDynamicObjectDetector
 from scene_analysis.io.artifact_writer import ArtifactWriter
 from scene_analysis.io.video_reader import VideoReader
 from scene_analysis.logging_setup import setup_logging
-from scene_analysis.obstacle_map.base import DummyObstacleMapBuilder
+from scene_analysis.obstacle_map.base import create_obstacle_heatmap_builder
 from scene_analysis.pipeline.mvp_pipeline import MVPSceneAnalysisPipeline
 from scene_analysis.preprocessing.frame_preprocessor import FramePreprocessor
 from scene_analysis.utils import timestamp_to_str
@@ -39,6 +38,9 @@ def _apply_overrides(
     depth_model: str | None,
     device: str | None,
     fp16: bool | None,
+    suppression_strength: float | None,
+    bottom_strip_ratio: float | None,
+    gamma: float | None,
 ) -> AppConfig:
     if input_path is not None:
         config.input.source_path = input_path
@@ -54,6 +56,12 @@ def _apply_overrides(
         config.depth.device = device
     if fp16 is not None:
         config.depth.use_fp16 = fp16
+    if suppression_strength is not None:
+        config.obstacle_heatmap.road_suppression.suppression_strength = suppression_strength
+    if bottom_strip_ratio is not None:
+        config.obstacle_heatmap.road_suppression.bottom_strip_ratio = bottom_strip_ratio
+    if gamma is not None:
+        config.obstacle_heatmap.near_score.gamma = gamma
     return config
 
 
@@ -120,8 +128,28 @@ def run_video(
         "--fp16/--no-fp16",
         help="Enable or disable fp16 inference override",
     ),
+    suppression_strength: float | None = typer.Option(
+        None,
+        "--suppression-strength",
+        min=0.0,
+        max=1.0,
+        help="Optional obstacle heatmap road suppression strength override",
+    ),
+    bottom_strip_ratio: float | None = typer.Option(
+        None,
+        "--bottom-strip-ratio",
+        min=0.0,
+        max=1.0,
+        help="Optional obstacle heatmap bottom strip ratio override",
+    ),
+    gamma: float | None = typer.Option(
+        None,
+        "--gamma",
+        min=0.0001,
+        help="Optional obstacle heatmap near-score gamma override",
+    ),
 ) -> None:
-    """Run scene analysis pipeline for mono camera"""
+    """Run scene analysis pipeline for mono camera."""
     reader: VideoReader | None = None
     writer: ArtifactWriter | None = None
     logging_ready = False
@@ -137,6 +165,9 @@ def run_video(
             depth_model=depth_model,
             device=device,
             fp16=fp16,
+            suppression_strength=suppression_strength,
+            bottom_strip_ratio=bottom_strip_ratio,
+            gamma=gamma,
         )
 
         setup_logging(config.runtime.log_level)
@@ -153,19 +184,25 @@ def run_video(
             config.depth.device,
             config.depth.use_fp16,
         )
+        logger.info(
+            "Obstacle heatmap config: enabled={} mode={} suppression_strength={} bottom_strip_ratio={} gamma={}",
+            config.obstacle_heatmap.enabled,
+            config.obstacle_heatmap.road_suppression.mode,
+            config.obstacle_heatmap.road_suppression.suppression_strength,
+            config.obstacle_heatmap.road_suppression.bottom_strip_ratio,
+            config.obstacle_heatmap.near_score.gamma,
+        )
 
         reader = VideoReader(config.input.source_path)
         preprocessor = FramePreprocessor(config.preprocessing)
         depth_estimator = create_depth_estimator(config.depth)
-        obstacle_builder = DummyObstacleMapBuilder()
-        dynamic_detector = DummyDynamicObjectDetector()
+        obstacle_builder = create_obstacle_heatmap_builder(config.obstacle_heatmap)
         pipeline = MVPSceneAnalysisPipeline(
             preprocessor=preprocessor,
             depth_estimator=depth_estimator,
-            obstacle_map_builder=obstacle_builder,
-            dynamic_detector=dynamic_detector,
+            obstacle_heatmap_builder=obstacle_builder,
         )
-        writer = ArtifactWriter(config.output, config.depth)
+        writer = ArtifactWriter(config.output, config.depth, config.obstacle_heatmap)
 
         resolved_device = getattr(depth_estimator, "device", config.depth.device)
         if config.depth.enabled:
@@ -195,8 +232,6 @@ def run_video(
             result = pipeline.process_frame(frame)
             writer.save_original(frame)
             writer.save_preprocessed(frame.frame_index, result.preprocessed_image)
-            if result.overlay_image is not None:
-                writer.save_overlay(frame.frame_index, result.overlay_image)
             writer.append_result(result)
 
             processed_frames += 1
@@ -206,10 +241,11 @@ def run_video(
                 inference_ms=f"{float(inference_ms):.1f}" if inference_ms is not None else "n/a",
             )
             logger.debug(
-                "Processed frame {} at {} with depth status {}",
+                "Processed frame {} at {} with depth status {} and heatmap status {}",
                 frame.frame_index,
                 timestamp_to_str(frame.timestamp_ms),
                 result.depth.metadata.get("status", "unknown"),
+                result.obstacle_heatmap.metadata.get("status", "unknown"),
             )
 
         logger.info(

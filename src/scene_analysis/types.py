@@ -28,12 +28,12 @@ class DepthResult:
 
 
 @dataclass(slots=True)
-class ObstacleMapResult:
-    """Результат построения карты препятствий для кадра"""
+class ObstacleHeatmapResult:
+    """Результат построения obstacle heatmap для кадра"""
 
-    obstacle_mask: np.ndarray | None
-    occupancy_grid: np.ndarray | None
-    costmap: np.ndarray | None
+    heatmap: np.ndarray | None
+    heatmap_visualization: np.ndarray | None
+    overlay_image: np.ndarray | None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -54,7 +54,6 @@ class SceneAnalysisResult:
     frame: FrameData
     preprocessed_image: np.ndarray
     depth: DepthResult
-    obstacle_map: ObstacleMapResult
-    dynamic_objects: list[DynamicObject]
+    obstacle_heatmap: ObstacleHeatmapResult
     overlay_image: np.ndarray | None
     metadata: dict[str, Any] = field(default_factory=dict)

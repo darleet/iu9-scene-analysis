@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from scene_analysis.config import load_config
 
 
-def _config_text(*, extra_depth_block: str = "") -> str:
+def _config_text(*, extra_depth_block: str = "", extra_obstacle_block: str = "") -> str:
     depth_block = """
 depth:
   enabled: true
@@ -25,8 +25,46 @@ depth:
     min: 2.0
     max: 98.0
 """.strip()
+    obstacle_block = """
+obstacle_heatmap:
+  enabled: true
+  near_score:
+    use_relative_depth: true
+    invert_depth: false
+    clip_min_percentile: 2.0
+    clip_max_percentile: 98.0
+    gamma: 1.0
+  roi:
+    enabled: true
+    top_ignore_ratio: 0.22
+    left_ignore_ratio: 0.0
+    right_ignore_ratio: 0.0
+    bottom_keep_ratio: 1.0
+  road_suppression:
+    enabled: true
+    mode: "row_baseline"
+    bottom_strip_ratio: 0.30
+    row_smooth_kernel: 11
+    baseline_quantile: 0.60
+    suppression_strength: 0.85
+    min_row_activation: 0.03
+    preserve_vertical_edges: true
+    edge_weight: 0.35
+  postprocess:
+    blur_kernel_size: 5
+    morph_kernel_size: 5
+    min_activation: 0.05
+    normalize_output: true
+  visualization:
+    save_heatmap_npy: true
+    save_heatmap_png: true
+    save_overlay_png: true
+    colormap: "inferno"
+""".strip()
     if extra_depth_block:
         depth_block = extra_depth_block.strip()
+    if extra_obstacle_block:
+        obstacle_block = extra_obstacle_block.strip()
 
     return f"""
 app:
@@ -47,6 +85,7 @@ preprocessing:
     width: 100
     height: 100
 {depth_block}
+{obstacle_block}
 output:
   output_dir: "data/artifacts/test"
   save_original_frames: true
@@ -68,11 +107,17 @@ def test_load_config_from_base_yaml() -> None:
     assert config.depth.enabled is True
     assert config.depth.provider == "depth_anything_v2"
     assert config.depth.model == "depth-anything/Depth-Anything-V2-Small-hf"
+    assert config.obstacle_heatmap.enabled is True
+    assert config.obstacle_heatmap.road_suppression.mode == "row_baseline"
+    assert config.obstacle_heatmap.visualization.colormap == "inferno"
 
 
 def test_roi_validation_rejects_negative_origin(tmp_path: Path) -> None:
     config_path = tmp_path / "invalid_roi.yaml"
-    config_path.write_text(_config_text().replace("enabled: false", "enabled: true", 1).replace("x: 0", "x: -1", 1), encoding="utf-8")
+    config_path.write_text(
+        _config_text().replace("enabled: false", "enabled: true", 1).replace("x: 0", "x: -1", 1),
+        encoding="utf-8",
+    )
 
     with pytest.raises(ValidationError):
         load_config(config_path)
@@ -197,3 +242,51 @@ depth:
     config = load_config(config_path)
 
     assert config.depth.enabled is False
+
+
+def test_invalid_obstacle_heatmap_kernel_raises_error(tmp_path: Path) -> None:
+    config_path = tmp_path / "invalid_heatmap_kernel.yaml"
+    config_path.write_text(
+        _config_text(
+            extra_obstacle_block="""
+obstacle_heatmap:
+  enabled: true
+  near_score:
+    use_relative_depth: true
+    invert_depth: false
+    clip_min_percentile: 2.0
+    clip_max_percentile: 98.0
+    gamma: 1.0
+  roi:
+    enabled: true
+    top_ignore_ratio: 0.22
+    left_ignore_ratio: 0.0
+    right_ignore_ratio: 0.0
+    bottom_keep_ratio: 1.0
+  road_suppression:
+    enabled: true
+    mode: "row_baseline"
+    bottom_strip_ratio: 0.30
+    row_smooth_kernel: 10
+    baseline_quantile: 0.60
+    suppression_strength: 0.85
+    min_row_activation: 0.03
+    preserve_vertical_edges: true
+    edge_weight: 0.35
+  postprocess:
+    blur_kernel_size: 5
+    morph_kernel_size: 5
+    min_activation: 0.05
+    normalize_output: true
+  visualization:
+    save_heatmap_npy: true
+    save_heatmap_png: true
+    save_overlay_png: true
+    colormap: "inferno"
+"""
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError):
+        load_config(config_path)

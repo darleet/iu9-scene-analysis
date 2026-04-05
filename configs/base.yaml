@@ -33,8 +33,43 @@ depth:
     min: 2.0
     max: 98.0
 
+obstacle_heatmap:
+  enabled: true
+  near_score:
+    use_relative_depth: true
+    invert_depth: false
+    clip_min_percentile: 2.0
+    clip_max_percentile: 98.0
+    gamma: 1.0
+  roi:
+    enabled: true
+    top_ignore_ratio: 0.22
+    left_ignore_ratio: 0.0
+    right_ignore_ratio: 0.0
+    bottom_keep_ratio: 1.0
+  road_suppression:
+    enabled: true
+    mode: "row_baseline"
+    bottom_strip_ratio: 0.30
+    row_smooth_kernel: 11
+    baseline_quantile: 0.60
+    suppression_strength: 1.0
+    min_row_activation: 0.03
+    preserve_vertical_edges: true
+    edge_weight: 0.35
+  postprocess:
+    blur_kernel_size: 5
+    morph_kernel_size: 5
+    min_activation: 0.05
+    normalize_output: true
+  visualization:
+    save_heatmap_npy: true
+    save_heatmap_png: true
+    save_overlay_png: true
+    colormap: "inferno"
+
 output:
-  output_dir: "data/artifacts/run_002"
+  output_dir: "data/artifacts/run_003"
   save_original_frames: true
   save_preprocessed_frames: true
   save_overlay_frames: true

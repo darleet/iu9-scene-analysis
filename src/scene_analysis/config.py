@@ -7,12 +7,39 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+def _validate_percentile_value(value: float, field_name: str) -> float:
+    normalized = float(value)
+    if not 0.0 <= normalized <= 100.0:
+        raise ValueError(f"{field_name} must be in the range [0, 100]")
+    return normalized
+
+
+def _validate_ratio_value(value: float, field_name: str) -> float:
+    normalized = float(value)
+    if not 0.0 <= normalized <= 1.0:
+        raise ValueError(f"{field_name} must be in the range [0, 1]")
+    return normalized
+
+
+def _validate_probability_value(value: float, field_name: str) -> float:
+    return _validate_ratio_value(value, field_name)
+
+
+def _validate_odd_kernel(value: int, field_name: str) -> int:
+    normalized = int(value)
+    if normalized <= 0:
+        raise ValueError(f"{field_name} must be greater than 0")
+    if normalized % 2 == 0:
+        raise ValueError(f"{field_name} must be an odd positive integer")
+    return normalized
+
+
 class BaseConfigModel(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
 
 class RoiConfig(BaseConfigModel):
-    """Настройки области интереса для препроцессинга"""
+    """Настройки области интереса для препроцессинга."""
 
     enabled: bool = False
     x: int = 0
@@ -60,10 +87,8 @@ class PercentileClipConfig(BaseConfigModel):
 
     @field_validator("min", "max")
     @classmethod
-    def validate_percentile_range(cls, value: float) -> float:
-        if not 0.0 <= value <= 100.0:
-            raise ValueError("Depth clip percentiles must be in the range [0, 100]")
-        return float(value)
+    def validate_percentile_range(cls, value: float, info: Any) -> float:
+        return _validate_percentile_value(value, f"Depth clip percentile '{info.field_name}'")
 
     @model_validator(mode="after")
     def validate_percentile_order(self) -> PercentileClipConfig:
@@ -122,6 +147,131 @@ class DepthConfig(BaseConfigModel):
         return normalized or None
 
 
+class NearScoreConfig(BaseConfigModel):
+    """Параметры преобразования depth map в near-score"""
+
+    use_relative_depth: bool = True
+    invert_depth: bool = False
+    clip_min_percentile: float = 2.0
+    clip_max_percentile: float = 98.0
+    gamma: float = Field(default=1.0, gt=0.0)
+
+    @field_validator("clip_min_percentile", "clip_max_percentile")
+    @classmethod
+    def validate_percentile(cls, value: float, info: Any) -> float:
+        return _validate_percentile_value(value, f"Near-score percentile '{info.field_name}'")
+
+    @model_validator(mode="after")
+    def validate_percentile_order(self) -> NearScoreConfig:
+        if self.clip_min_percentile >= self.clip_max_percentile:
+            raise ValueError("Near-score clip_min_percentile must be smaller than clip_max_percentile")
+        return self
+
+
+class HeatmapRoiConfig(BaseConfigModel):
+    """Параметры ROI для obstacle heatmap"""
+
+    enabled: bool = True
+    top_ignore_ratio: float = 0.22
+    left_ignore_ratio: float = 0.0
+    right_ignore_ratio: float = 0.0
+    bottom_keep_ratio: float = 1.0
+
+    @field_validator(
+        "top_ignore_ratio",
+        "left_ignore_ratio",
+        "right_ignore_ratio",
+        "bottom_keep_ratio",
+    )
+    @classmethod
+    def validate_ratio(cls, value: float, info: Any) -> float:
+        return _validate_ratio_value(value, f"Heatmap ROI '{info.field_name}'")
+
+
+class RoadSuppressionConfig(BaseConfigModel):
+    """Параметры подавления дороги"""
+
+    enabled: bool = True
+    mode: str = "row_baseline"
+    bottom_strip_ratio: float = 0.30
+    row_smooth_kernel: int = 11
+    baseline_quantile: float = 0.60
+    suppression_strength: float = 0.85
+    min_row_activation: float = 0.03
+    preserve_vertical_edges: bool = True
+    edge_weight: float = 0.35
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized != "row_baseline":
+            raise ValueError("Only road_suppression mode 'row_baseline' is supported")
+        return normalized
+
+    @field_validator("bottom_strip_ratio", "baseline_quantile", "min_row_activation", "suppression_strength", "edge_weight")
+    @classmethod
+    def validate_unit_range(cls, value: float, info: Any) -> float:
+        return _validate_probability_value(value, f"Road suppression '{info.field_name}'")
+
+    @field_validator("row_smooth_kernel")
+    @classmethod
+    def validate_row_smooth_kernel(cls, value: int) -> int:
+        return _validate_odd_kernel(value, "road_suppression.row_smooth_kernel")
+
+
+class HeatmapPostprocessConfig(BaseConfigModel):
+    """Параметры постобработки obstacle heatmap"""
+
+    blur_kernel_size: int = 5
+    morph_kernel_size: int = 5
+    min_activation: float = 0.05
+    normalize_output: bool = True
+
+    @field_validator("blur_kernel_size")
+    @classmethod
+    def validate_blur_kernel(cls, value: int) -> int:
+        return _validate_odd_kernel(value, "postprocess.blur_kernel_size")
+
+    @field_validator("morph_kernel_size")
+    @classmethod
+    def validate_morph_kernel(cls, value: int) -> int:
+        return _validate_odd_kernel(value, "postprocess.morph_kernel_size")
+
+    @field_validator("min_activation")
+    @classmethod
+    def validate_min_activation(cls, value: float) -> float:
+        return _validate_probability_value(value, "postprocess.min_activation")
+
+
+class HeatmapVisualizationConfig(BaseConfigModel):
+    """Параметры сохранения obstacle heatmap артефактов"""
+
+    save_heatmap_npy: bool = True
+    save_heatmap_png: bool = True
+    save_overlay_png: bool = True
+    colormap: str = "inferno"
+
+    @field_validator("colormap")
+    @classmethod
+    def validate_colormap(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not normalized:
+            raise ValueError("Visualization colormap must not be empty")
+        return normalized
+
+
+class ObstacleHeatmapConfig(BaseConfigModel):
+    """Полная конфигурация построения obstacle heatmap"""
+
+    enabled: bool = True
+    near_score: NearScoreConfig = Field(default_factory=NearScoreConfig)
+    roi: HeatmapRoiConfig = Field(default_factory=HeatmapRoiConfig)
+    road_suppression: RoadSuppressionConfig = Field(default_factory=RoadSuppressionConfig)
+    postprocess: HeatmapPostprocessConfig = Field(default_factory=HeatmapPostprocessConfig)
+    visualization: HeatmapVisualizationConfig = Field(default_factory=HeatmapVisualizationConfig)
+
+
 class OutputConfig(BaseConfigModel):
     """Настройки сохранения артефактов"""
 
@@ -174,6 +324,7 @@ class AppConfig(BaseConfigModel):
     input: InputConfig
     preprocessing: PreprocessingConfig
     depth: DepthConfig
+    obstacle_heatmap: ObstacleHeatmapConfig = Field(default_factory=ObstacleHeatmapConfig)
     output: OutputConfig
     runtime: RuntimeConfig
 

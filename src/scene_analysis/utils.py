@@ -57,6 +57,64 @@ def ensure_float32_array(value: np.ndarray) -> np.ndarray:
     return np.asarray(value, dtype=np.float32)
 
 
+def safe_percentile(values: np.ndarray, percentile: float, fallback: float = 0.0) -> float:
+    """Вычислить процентиль по конечным значениям или вернуть fallback"""
+    array = ensure_float32_array(np.asarray(values))
+    finite = array[np.isfinite(array)]
+    if finite.size == 0:
+        return float(fallback)
+    return float(np.percentile(finite, float(percentile)))
+
+
+def normalize_to_unit_range(
+    values: np.ndarray,
+    lower: float | None = None,
+    upper: float | None = None,
+    *,
+    clip: bool = True,
+) -> np.ndarray:
+    """Нормализовать массив к диапазону [0, 1] без падений на константных картах"""
+    array = ensure_float32_array(values)
+    finite_mask = np.isfinite(array)
+    if not np.any(finite_mask):
+        return np.zeros_like(array, dtype=np.float32)
+
+    finite_values = array[finite_mask]
+    lower_bound = float(np.min(finite_values) if lower is None else lower)
+    upper_bound = float(np.max(finite_values) if upper is None else upper)
+
+    if not np.isfinite(lower_bound) or not np.isfinite(upper_bound):
+        return np.zeros_like(array, dtype=np.float32)
+    if upper_bound <= lower_bound + 1e-8:
+        return np.zeros_like(array, dtype=np.float32)
+
+    normalized = (array - lower_bound) / (upper_bound - lower_bound)
+    if clip:
+        normalized = np.clip(normalized, 0.0, 1.0)
+    normalized = normalized.astype(np.float32, copy=False)
+    normalized[~finite_mask] = 0.0
+    return normalized
+
+
+def make_odd_kernel(size: int) -> int:
+    """Проверить, что размер ядра положительный и нечетный"""
+    kernel = int(size)
+    if kernel <= 0:
+        raise ValueError("Kernel size must be greater than 0")
+    if kernel % 2 == 0:
+        raise ValueError("Kernel size must be odd")
+    return kernel
+
+
+def apply_binary_roi(values: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Применить бинарную float32-маску к карте признаков"""
+    array = ensure_float32_array(values)
+    roi_mask = ensure_float32_array(mask)
+    if array.shape != roi_mask.shape:
+        raise ValueError("ROI mask shape must match the input array shape")
+    return (array * (roi_mask > 0).astype(np.float32)).astype(np.float32, copy=False)
+
+
 def maybe_colorize_mask(
     mask: np.ndarray | None,
     color: tuple[int, int, int] = (0, 255, 0),
