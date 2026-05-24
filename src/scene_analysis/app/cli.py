@@ -19,6 +19,7 @@ from scene_analysis.obstacle_map.base import create_obstacle_heatmap_builder
 from scene_analysis.pipeline.image_prediction_runner import ImagePredictionRunner
 from scene_analysis.pipeline.mvp_pipeline import MVPSceneAnalysisPipeline
 from scene_analysis.preprocessing.frame_preprocessor import FramePreprocessor
+from scene_analysis.student.config import load_student_inference_config, load_student_train_config
 from scene_analysis.utils import timestamp_to_str
 
 app = typer.Typer(
@@ -329,7 +330,6 @@ def evaluate_heatmap(
         help="Optional evaluation output directory override",
     ),
 ) -> None:
-    """Evaluate already saved obstacle heatmap predictions against local ground truth."""
     logging_ready = False
 
     try:
@@ -448,7 +448,6 @@ def generate_predictions(
         help="Optional obstacle heatmap near-score gamma override",
     ),
 ) -> None:
-    """Generate obstacle heatmap predictions for a directory of images."""
     logging_ready = False
     artifact_writer: ArtifactWriter | None = None
 
@@ -552,3 +551,272 @@ def generate_predictions(
     finally:
         if artifact_writer is not None:
             artifact_writer.close()
+
+
+@app.command("prepare-student-data")
+def prepare_student_data_command(
+    config_path: Path = typer.Option(
+        ...,
+        "--config",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Path to student training YAML configuration file",
+    ),
+    overwrite_teacher_heatmaps: bool = typer.Option(
+        False,
+        "--overwrite-teacher-heatmaps",
+        help="Regenerate teacher heatmaps even when .npy files already exist",
+    ),
+    limit: int | None = typer.Option(
+        None,
+        "--limit",
+        min=1,
+        help="Optional sample limit for debug preparation",
+    ),
+) -> None:
+    """Prepare train/val folders and teacher heatmaps for student training."""
+    try:
+        setup_logging("INFO")
+        from scene_analysis.student.teacher_prepare import prepare_student_data
+
+        config = load_student_train_config(config_path)
+        summary = prepare_student_data(
+            config,
+            overwrite_teacher_heatmaps=overwrite_teacher_heatmaps,
+            limit=limit,
+        )
+        typer.echo("STUDENT DATA PREPARATION RESULT")
+        typer.echo(f"raw root: {summary['raw_root_dir']}")
+        typer.echo(f"prepared root: {summary['prepared_root_dir']}")
+        typer.echo(f"train samples: {summary['train_samples']}")
+        typer.echo(f"val samples: {summary['val_samples']}")
+        typer.echo(f"teacher generated: {sum(summary['teacher_heatmaps_generated'].values())}")
+        typer.echo(f"teacher skipped existing: {sum(summary['teacher_heatmaps_skipped_existing'].values())}")
+        typer.echo(f"summary: {config.dataset.prepared_root_dir / 'prepare_summary.json'}")
+    except Exception as error:
+        logger.exception("Student data preparation failed: {}", error)
+        raise typer.Exit(code=1) from error
+
+
+@app.command("train-students")
+def train_students_command(
+    config_path: Path = typer.Option(
+        ...,
+        "--config",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Path to student training YAML configuration file",
+    ),
+    student: str | None = typer.Option(
+        None,
+        "--student",
+        help="Optional student name: student_s, student_m or student_q",
+    ),
+    device: str | None = typer.Option(
+        None,
+        "--device",
+        help="Optional runtime device override",
+    ),
+    epochs: int | None = typer.Option(
+        None,
+        "--epochs",
+        min=1,
+        help="Optional epoch count override",
+    ),
+    batch_size: int | None = typer.Option(
+        None,
+        "--batch-size",
+        min=1,
+        help="Optional batch size override",
+    ),
+    smoke: bool = typer.Option(
+        False,
+        "--smoke",
+        help="Mark this run as a CPU-friendly smoke/debug run",
+    ),
+) -> None:
+    try:
+        setup_logging("INFO")
+        from scene_analysis.student.model_registry import validate_student_name
+        from scene_analysis.student.trainer import StudentTrainer
+
+        config = load_student_train_config(config_path)
+        if device is not None:
+            config.training.device = device
+        if epochs is not None:
+            config.training.epochs = epochs
+        if batch_size is not None:
+            config.training.batch_size = batch_size
+
+        students = [validate_student_name(student)] if student is not None else config.models.train_students
+        if smoke:
+            logger.info("Running student smoke training: students={} epochs={}", students, config.training.epochs)
+
+        for student_name in students:
+            trainer = StudentTrainer(config.model_copy(deep=True), student_name)
+            summary = trainer.train()
+            _print_student_training_summary(summary)
+    except Exception as error:
+        logger.exception("Student training failed: {}", error)
+        raise typer.Exit(code=1) from error
+
+
+@app.command("run-student-video-folder")
+def run_student_video_folder_command(
+    config_path: Path = typer.Option(
+        ...,
+        "--config",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Path to student inference YAML configuration file",
+    ),
+    student: str | None = typer.Option(
+        None,
+        "--student",
+        help="Student name: student_s, student_m or student_q",
+    ),
+    checkpoint: Path | None = typer.Option(
+        None,
+        "--checkpoint",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Path to student checkpoint",
+    ),
+    input_dir: Path | None = typer.Option(
+        None,
+        "--input-dir",
+        help="Optional folder with input videos",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        help="Optional output base directory",
+    ),
+) -> None:
+    try:
+        setup_logging("INFO")
+        from scene_analysis.student.model_registry import validate_student_name
+        from scene_analysis.student.video_runtime import run_student_on_video_folder
+
+        config = load_student_inference_config(config_path)
+        student_name = validate_student_name(student or config.inference.student)
+        checkpoint_path = checkpoint or config.inference.checkpoint_path
+        summary = run_student_on_video_folder(
+            config=config,
+            student_name=student_name,
+            checkpoint_path=checkpoint_path,
+            input_dir=input_dir,
+            output_dir=output_dir,
+        )
+        typer.echo("STUDENT VIDEO FOLDER RESULT")
+        typer.echo(f"student: {summary['student']}")
+        typer.echo(f"checkpoint: {summary['checkpoint']}")
+        typer.echo(f"videos processed: {summary['videos_processed']}")
+        typer.echo(f"frames processed: {summary['frames_processed']}")
+        typer.echo(f"avg inference ms: {summary['avg_inference_ms']:.1f}")
+        typer.echo(f"avg fps: {summary['avg_fps']:.1f}")
+        typer.echo(f"outputs: {summary['output_dir']}")
+    except Exception as error:
+        logger.exception("Student video folder inference failed: {}", error)
+        raise typer.Exit(code=1) from error
+
+
+@app.command("run-student-camera")
+def run_student_camera_command(
+    config_path: Path = typer.Option(
+        ...,
+        "--config",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Path to student inference YAML configuration file",
+    ),
+    student: str | None = typer.Option(
+        None,
+        "--student",
+        help="Student name: student_s, student_m or student_q",
+    ),
+    checkpoint: Path | None = typer.Option(
+        None,
+        "--checkpoint",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Path to student checkpoint",
+    ),
+    camera_index: int | None = typer.Option(
+        None,
+        "--camera-index",
+        min=0,
+        help="Optional OpenCV camera index override",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        help="Optional output base directory",
+    ),
+) -> None:
+    try:
+        setup_logging("INFO")
+        from scene_analysis.student.model_registry import validate_student_name
+        from scene_analysis.student.video_runtime import run_student_on_camera
+
+        config = load_student_inference_config(config_path)
+        student_name = validate_student_name(student or config.inference.student)
+        checkpoint_path = checkpoint or config.inference.checkpoint_path
+        summary = run_student_on_camera(
+            config=config,
+            student_name=student_name,
+            checkpoint_path=checkpoint_path,
+            camera_index=camera_index,
+            output_dir=output_dir,
+        )
+        typer.echo("STUDENT CAMERA RESULT")
+        typer.echo(f"student: {summary['student']}")
+        typer.echo(f"checkpoint: {summary['checkpoint']}")
+        typer.echo(f"camera index: {summary['camera_index']}")
+        typer.echo(f"frames processed: {summary['frames_processed']}")
+        typer.echo(f"avg inference ms: {summary['avg_inference_ms']:.1f}")
+        typer.echo(f"avg fps: {summary['avg_fps']:.1f}")
+        typer.echo(f"outputs: {summary['output_dir']}")
+    except Exception as error:
+        logger.exception("Student camera inference failed: {}", error)
+        raise typer.Exit(code=1) from error
+
+
+def _print_student_training_summary(summary: dict[str, object]) -> None:
+    typer.echo("STUDENT TRAINING RESULT")
+    typer.echo(f"student: {summary['student_name']}")
+    typer.echo(f"backbone: {summary['backbone']}")
+    typer.echo(f"params: {summary['parameter_count']}")
+    typer.echo(f"train samples: {summary['train_samples']}")
+    typer.echo(f"val samples: {summary['val_samples']}")
+    typer.echo(f"best epoch: {summary['best_epoch']}")
+    best_val_ap = summary.get("best_val_ap")
+    typer.echo(f"best val AP: {_format_cli_float(best_val_ap)}")
+    typer.echo(f"last train loss: {_format_cli_float(summary.get('last_train_loss'))}")
+    typer.echo(f"last val loss: {_format_cli_float(summary.get('last_val_loss'))}")
+    typer.echo(f"best checkpoint: {summary['checkpoint_best']}")
+    typer.echo(f"summary: {summary['summary']}")
+
+
+def _format_cli_float(value: object) -> str:
+    if value is None:
+        return "n/a"
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if math.isnan(numeric):
+        return "n/a"
+    return f"{numeric:.4f}"

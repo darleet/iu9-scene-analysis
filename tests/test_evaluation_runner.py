@@ -78,7 +78,7 @@ def _prepare_dataset(root_dir: Path) -> None:
 
 
 def test_runner_computes_summary_and_saves_outputs(tmp_path: Path) -> None:
-    dataset_root = tmp_path / "road_obstacle_21"
+    dataset_root = tmp_path / "road_obstacle_21_raw"
     outputs_dir = tmp_path / "eval_outputs"
     _prepare_dataset(dataset_root)
 
@@ -86,7 +86,7 @@ def test_runner_computes_summary_and_saves_outputs(tmp_path: Path) -> None:
         EvaluationConfig(
             enabled=True,
             dataset=EvaluationDatasetConfig(
-                name="road_obstacle_21",
+                name="road_obstacle_21_raw",
                 root_dir=dataset_root,
                 images_dir="images",
                 masks_dir="masks",
@@ -120,7 +120,7 @@ def test_runner_computes_summary_and_saves_outputs(tmp_path: Path) -> None:
 
     summary = runner.run()
 
-    assert summary.dataset_name == "road_obstacle_21"
+    assert summary.dataset_name == "road_obstacle_21_raw"
     assert summary.num_samples == 2
     assert summary.num_valid_samples == 2
     assert summary.average_precision > 0.9
@@ -136,5 +136,5 @@ def test_runner_computes_summary_and_saves_outputs(tmp_path: Path) -> None:
     assert hard_examples_path.exists()
 
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
-    assert payload["dataset_name"] == "road_obstacle_21"
+    assert payload["dataset_name"] == "road_obstacle_21_raw"
     assert "average_precision" in payload

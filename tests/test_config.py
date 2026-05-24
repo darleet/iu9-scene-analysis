@@ -70,8 +70,8 @@ obstacle_heatmap:
 evaluation:
   enabled: true
   dataset:
-    name: "road_obstacle_21"
-    root_dir: "data/datasets/road_obstacle_21"
+    name: "road_obstacle_21_raw"
+    root_dir: "data/datasets/road_obstacle_21_raw"
     images_dir: "images"
     masks_dir: "masks"
     predictions_dir: "predictions"
@@ -150,7 +150,7 @@ def test_load_config_from_base_yaml() -> None:
     assert config.obstacle_heatmap.road_suppression.mode == "row_baseline"
     assert config.obstacle_heatmap.visualization.colormap == "inferno"
     assert config.evaluation.enabled is True
-    assert config.evaluation.dataset.name == "road_obstacle_21"
+    assert config.evaluation.dataset.name == "road_obstacle_21_raw"
     assert config.evaluation.dataset.file_extension_predictions == ".npy"
 
 
@@ -342,8 +342,8 @@ def test_invalid_evaluation_prediction_extension_raises_error(tmp_path: Path) ->
 evaluation:
   enabled: true
   dataset:
-    name: "road_obstacle_21"
-    root_dir: "data/datasets/road_obstacle_21"
+    name: "road_obstacle_21_raw"
+    root_dir: "data/datasets/road_obstacle_21_raw"
     images_dir: "images"
     masks_dir: "masks"
     predictions_dir: "predictions"

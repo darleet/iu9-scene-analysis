@@ -17,10 +17,13 @@ dependencies = [
     "pandas>=2.2,<3.0",
     "scikit-learn>=1.4,<2.0",
     "torch>=2.9,<3.0",
+    "torchvision>=0.24,<1.0",
+    "albumentations>=2.0,<3.0",
     "transformers>=4.44,<6.0",
     "pillow>=10.0,<12.0",
     "safetensors>=0.4,<1.0",
     "tqdm>=4.66,<5.0",
+    "pandas-stubs (>=2.3.3,<2.4.0)",
 ]
 
 [project.scripts]

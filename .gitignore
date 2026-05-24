@@ -6,3 +6,4 @@ build/
 data/artifacts/*
 *.pyc
 .idea/
+.DS_Store

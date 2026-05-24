@@ -71,8 +71,8 @@ obstacle_heatmap:
 evaluation:
   enabled: true
   dataset:
-    name: "road_obstacle_21"
-    root_dir: "data/datasets/road_obstacle_21"
+    name: "road_obstacle_21_raw"
+    root_dir: "data/datasets/road_obstacle_21_raw"
     images_dir: "images"
     masks_dir: "masks"
     predictions_dir: "predictions"

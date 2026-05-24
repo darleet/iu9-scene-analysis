@@ -224,7 +224,7 @@ class EvaluationRunner:
             )
 
     def _create_dataset(self) -> RoadObstacle21Dataset:
-        if self.config.dataset.name != "road_obstacle_21":
+        if self.config.dataset.name != "road_obstacle_21_raw":
             raise ValueError(f"Unsupported evaluation dataset: {self.config.dataset.name}")
         return RoadObstacle21Dataset(self.config.dataset)
 

@@ -1,0 +1,100 @@
+experiment:
+  name: "student_heatmap_distillation_smoke"
+  seed: 1667
+
+dataset:
+  raw_root_dir: "data/datasets/road_obstacle_21_raw"
+  prepared_root_dir: "data/datasets/road_obstacle_21_prepared"
+  images_dir: "images"
+  masks_dir: "masks"
+  image_suffix: ".png"
+  mask_suffix: "_labels_semantic.png"
+  teacher_suffix: ".npy"
+  train_ratio: 0.8
+  split_seed: 1667
+  obstacle_value: 1
+  background_value: 0
+  ignore_value: 255
+
+teacher:
+  config_path: "configs/base.yaml"
+  overwrite_teacher_heatmaps: false
+
+input:
+  height: 128
+  width: 256
+  normalize_mean: [0.485, 0.456, 0.406]
+  normalize_std: [0.229, 0.224, 0.225]
+
+augmentations:
+  enabled: true
+  horizontal_flip_p: 0.5
+  brightness_contrast_p: 0.3
+  blur_p: 0.1
+  noise_p: 0.1
+
+models:
+  train_students: ["student_s"]
+
+  student_s:
+    backbone: "mobilenet_v3_small"
+    pretrained_backbone: false
+    decoder_channels: [64, 32]
+    dropout: 0.1
+
+  student_m:
+    backbone: "shufflenet_v2_x1_0"
+    pretrained_backbone: false
+    decoder_channels: [64, 32]
+    dropout: 0.1
+
+  student_q:
+    backbone: "efficientnet_b0"
+    pretrained_backbone: false
+    decoder_channels: [96, 48]
+    dropout: 0.1
+
+loss:
+  bce_weight: 1.0
+  dice_weight: 0.5
+  roi_bce_weight: 0.4
+  distill_mse_weight: 0.2
+  offroad_weight: 0.1
+  positive_class_weight: 6.0
+  eps: 0.000001
+
+optimizer:
+  name: "adamw"
+  lr: 0.0003
+  weight_decay: 0.0001
+
+scheduler:
+  name: "cosine"
+  min_lr: 0.000001
+
+training:
+  device: "auto"
+  batch_size: 2
+  num_workers: 0
+  epochs: 1
+  use_amp: true
+  grad_clip_norm: 1.0
+  log_every_n_steps: 1
+  save_every_n_epochs: 1
+  max_train_batches: 3
+  max_val_batches: 3
+
+validation:
+  compute_average_precision: true
+  save_best_by: "val_ap"
+  threshold_preview: 0.5
+  save_visual_examples: true
+  num_visual_examples: 4
+
+outputs:
+  root_dir: "data/artifacts/student_smoke"
+  save_checkpoints: true
+  save_history_csv: true
+  save_summary_json: true
+  save_pr_curve_png: true
+  save_visual_previews: true

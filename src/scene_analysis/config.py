@@ -54,7 +54,7 @@ class BaseConfigModel(BaseModel):
 
 
 class RoiConfig(BaseConfigModel):
-    """Настройки области интереса для препроцессинга."""
+    """Настройки области интереса для препроцессинга"""
 
     enabled: bool = False
     x: int = 0
@@ -299,10 +299,10 @@ class ObstacleHeatmapConfig(BaseConfigModel):
 
 
 class EvaluationDatasetConfig(BaseConfigModel):
-    """Настройки локального layout датасета для evaluation."""
+    """Настройки локального layout датасета для evaluation"""
 
-    name: str = "road_obstacle_21"
-    root_dir: Path = Path("data/datasets/road_obstacle_21")
+    name: str = "road_obstacle_21_raw"
+    root_dir: Path = Path("data/datasets/road_obstacle_21_raw")
     images_dir: Path = Path("images")
     masks_dir: Path = Path("masks")
     predictions_dir: Path = Path("predictions")

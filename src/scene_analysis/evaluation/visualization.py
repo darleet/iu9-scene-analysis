@@ -14,10 +14,7 @@ try:
 except ImportError:
     pd = None
 
-try:
-    import matplotlib.pyplot as plt
-except ImportError:
-    plt = None
+plt = None
 
 
 MAX_PR_CURVE_POINTS = 5000

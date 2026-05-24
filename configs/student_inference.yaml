@@ -1,0 +1,41 @@
+inference:
+  device: "auto"
+  student: "student_s"
+  checkpoint_path: "data/artifacts/student_runs/student_s/checkpoints/best.pt"
+
+input:
+  height: 256
+  width: 512
+  normalize_mean: [0.485, 0.456, 0.406]
+  normalize_std: [0.229, 0.224, 0.225]
+
+video_folder:
+  input_dir: "data/input_videos"
+  output_dir: "data/artifacts/student_video_folder"
+  video_extensions: [".mp4", ".avi", ".mov", ".mkv"]
+  max_frames: null
+  sample_every_n: 1
+
+camera:
+  camera_index: 0
+  width: 640
+  height: 480
+  fps: 15
+  display: true
+  save_video: true
+  output_dir: "data/artifacts/student_camera"
+
+visualization:
+  colormap: "inferno"
+  alpha: 0.45
+  show_binary_mask: true
+  threshold: 0.5
+  draw_stats: true
+  draw_model_name: true
+
+output:
+  save_overlay_video: true
+  save_frames: false
+  save_heatmap_npy: false
+  save_heatmap_png: true
+  save_jsonl: true

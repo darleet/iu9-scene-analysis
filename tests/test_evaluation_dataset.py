@@ -16,7 +16,7 @@ def _write_png(path: Path, array: np.ndarray) -> None:
 
 
 def test_discover_samples_matches_by_stem_and_skips_missing_masks(tmp_path: Path) -> None:
-    root_dir = tmp_path / "road_obstacle_21"
+    root_dir = tmp_path / "road_obstacle_21_raw"
     images_dir = root_dir / "images"
     masks_dir = root_dir / "masks"
     predictions_dir = root_dir / "predictions"
@@ -31,7 +31,7 @@ def test_discover_samples_matches_by_stem_and_skips_missing_masks(tmp_path: Path
 
     dataset = RoadObstacle21Dataset(
         EvaluationDatasetConfig(
-            name="road_obstacle_21",
+            name="road_obstacle_21_raw",
             root_dir=root_dir,
             images_dir="images",
             masks_dir="masks",
