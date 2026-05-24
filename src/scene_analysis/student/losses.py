@@ -8,16 +8,27 @@ from scene_analysis.student.config import StudentLossConfig
 
 
 def masked_bce_loss(
-    pred_prob: torch.Tensor,
+    logits: torch.Tensor,
     target: torch.Tensor,
     valid_mask: torch.Tensor,
     positive_class_weight: float,
-    eps: float,
 ) -> torch.Tensor:
     valid_pixels = _valid_pixel_count(valid_mask)
-    pred = pred_prob.clamp(min=eps, max=1.0 - eps)
-    bce = -(target * torch.log(pred) * positive_class_weight + (1.0 - target) * torch.log(1.0 - pred))
-    return (bce * valid_mask).sum() / valid_pixels
+    logits_float = logits.float()
+    target_float = target.float()
+    valid_float = valid_mask.float()
+    pos_weight = torch.as_tensor(
+        positive_class_weight,
+        dtype=logits_float.dtype,
+        device=logits_float.device,
+    )
+    bce = F.binary_cross_entropy_with_logits(
+        logits_float,
+        target_float,
+        pos_weight=pos_weight,
+        reduction="none",
+    )
+    return (bce * valid_float).sum() / valid_pixels
 
 
 def masked_dice_loss(
@@ -27,8 +38,9 @@ def masked_dice_loss(
     eps: float,
 ) -> torch.Tensor:
     valid_pixels = _valid_pixel_count(valid_mask)
-    pred = pred_prob * valid_mask
-    gt = target * valid_mask
+    valid_float = valid_mask.float()
+    pred = pred_prob.float() * valid_float
+    gt = target.float() * valid_float
     intersection = (pred * gt).sum()
     denominator = pred.sum() + gt.sum()
     dice = (2.0 * intersection + eps) / (denominator + eps)
@@ -38,7 +50,7 @@ def masked_dice_loss(
 
 
 def roi_bce_loss(roi_logits: torch.Tensor, roi_target: torch.Tensor) -> torch.Tensor:
-    return F.binary_cross_entropy_with_logits(roi_logits, roi_target)
+    return F.binary_cross_entropy_with_logits(roi_logits.float(), roi_target.float())
 
 
 def distillation_mse(
@@ -47,16 +59,18 @@ def distillation_mse(
     valid_mask: torch.Tensor,
 ) -> torch.Tensor:
     valid_pixels = _valid_pixel_count(valid_mask)
-    mse = (student_heatmap - teacher_heatmap).pow(2)
-    return (mse * valid_mask).sum() / valid_pixels
+    valid_float = valid_mask.float()
+    mse = (student_heatmap.float() - teacher_heatmap.float()).pow(2)
+    return (mse * valid_float).sum() / valid_pixels
 
 
 def offroad_loss(student_heatmap: torch.Tensor, ignore_mask: torch.Tensor) -> torch.Tensor:
     """Loss для объектов вне дороги"""
-    ignore_pixels = ignore_mask.sum()
+    ignore_float = ignore_mask.float()
+    ignore_pixels = ignore_float.sum()
     if float(ignore_pixels.detach().cpu()) <= 0.0:
         return student_heatmap.sum() * 0.0
-    return (student_heatmap * ignore_mask).sum() / ignore_pixels.clamp_min(1.0)
+    return (student_heatmap.float() * ignore_float).sum() / ignore_pixels.clamp_min(1.0)
 
 
 class StudentHeatmapLoss(nn.Module):
@@ -74,11 +88,10 @@ class StudentHeatmapLoss(nn.Module):
         teacher_heatmap: torch.Tensor,
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
         loss_bce = masked_bce_loss(
-            outputs["obstacle_prob"],
+            outputs["obstacle_logits"],
             obstacle_target,
             valid_mask,
             self.config.positive_class_weight,
-            self.config.eps,
         )
         loss_dice = masked_dice_loss(outputs["obstacle_prob"], obstacle_target, valid_mask, self.config.eps)
         loss_roi = roi_bce_loss(outputs["roi_logits"], roi_target)

@@ -21,7 +21,7 @@ def test_discover_samples_matches_by_cityscapes_suffix_and_skips_missing_masks(t
     masks_dir = root_dir / "train" / "scene"
     predictions_dir = root_dir / "predictions"
     images_dir.mkdir(parents=True)
-    masks_dir.mkdir(parents=True)
+    masks_dir.mkdir(parents=True, exist_ok=True)
     predictions_dir.mkdir(parents=True)
 
     np.save(predictions_dir / "sample_a.npy", np.ones((4, 4), dtype=np.float32))

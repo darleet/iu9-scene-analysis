@@ -28,7 +28,7 @@ def _prepare_dataset(root_dir: Path) -> None:
     masks_dir = root_dir / "train" / "scene"
     predictions_dir = root_dir / "predictions"
     images_dir.mkdir(parents=True)
-    masks_dir.mkdir(parents=True)
+    masks_dir.mkdir(parents=True, exist_ok=True)
     predictions_dir.mkdir(parents=True)
 
     _write_png(images_dir / "sample_001_leftImg8bit.png", np.zeros((4, 4, 3), dtype=np.uint8))
