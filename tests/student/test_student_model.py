@@ -25,6 +25,7 @@ def test_student_models_forward_shape_and_range() -> None:
         assert outputs["obstacle_logits"].shape == (2, 1, 64, 96)
         assert outputs["roi_logits"].shape == (2, 1, 64, 96)
         assert outputs["final_heatmap"].shape == (2, 1, 64, 96)
+        assert torch.equal(outputs["final_heatmap"], outputs["obstacle_prob"])
         assert torch.all(outputs["final_heatmap"] >= 0.0)
         assert torch.all(outputs["final_heatmap"] <= 1.0)
         assert count_parameters(model) > 0

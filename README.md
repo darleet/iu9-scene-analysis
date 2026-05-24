@@ -107,7 +107,7 @@ poetry run scene-analysis evaluate-heatmap \
 
 Student-модели работают по RGB-кадру без Depth Anything V2, depth map и road suppression:
 
-`RGB image -> student model -> obstacle_logits + roi_logits -> sigmoid -> final_heatmap = obstacle_prob * roi_prob`
+`RGB image -> student model -> obstacle_logits + roi_logits -> sigmoid -> final_heatmap = obstacle_prob`
 
 Teacher pipeline нужен только на этапе подготовки датасета: он генерирует `teacher_heatmaps/*.npy`, которые используются в distillation loss при обучении.
 

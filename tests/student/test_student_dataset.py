@@ -4,8 +4,9 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 
-from scene_analysis.student.dataset import StudentHeatmapDataset
+from scene_analysis.student.dataset import StudentHeatmapDataset, build_resized_student_cache
 from scene_analysis.student.split import RawStudentSample, create_or_load_split, discover_raw_samples
 from scene_analysis.student.teacher_prepare import _copy_sample
 
@@ -32,6 +33,40 @@ def test_student_dataset_returns_expected_tensors(train_config) -> None:
     assert float(item["teacher_heatmap"].max()) <= 1.0
     assert item["obstacle_target"].sum() > 0
     assert item["ignore_mask"].sum() > 0
+
+
+def test_student_dataset_can_read_resized_cache(train_config, monkeypatch: pytest.MonkeyPatch) -> None:
+    train_config.dataset.use_resized_cache = True
+    train_config.dataset.overwrite_resized_cache = True
+
+    summary = build_resized_student_cache(
+        train_config.dataset.prepared_root_dir,
+        "train",
+        train_config.dataset,
+        train_config.input,
+    )
+    dataset = StudentHeatmapDataset(
+        train_config.dataset.prepared_root_dir,
+        "train",
+        train_config.dataset,
+        train_config.input,
+        train_config.augmentations,
+        training=True,
+    )
+
+    def fail_read(path: Path) -> np.ndarray:
+        raise AssertionError(f"resized cache was not used for {path}")
+
+    monkeypatch.setattr(StudentHeatmapDataset, "_read_image_rgb", staticmethod(fail_read))
+    monkeypatch.setattr(StudentHeatmapDataset, "_read_mask", staticmethod(fail_read))
+    monkeypatch.setattr(StudentHeatmapDataset, "_read_teacher_heatmap", staticmethod(fail_read))
+
+    item = dataset[0]
+
+    assert summary["created"] == 4
+    assert all(sample.cache_path is not None and sample.cache_path.exists() for sample in dataset.samples)
+    assert item["image"].shape == (3, 64, 96)
+    assert item["teacher_heatmap"].shape == (1, 64, 96)
 
 
 def test_discover_raw_samples_and_split_are_deterministic(tmp_path: Path, make_train_config) -> None:

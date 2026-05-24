@@ -70,6 +70,8 @@ class StudentDatasetConfig(StudentBaseConfig):
     mask_background_values: list[int] = Field(default_factory=lambda: [1])
     mask_ignore_values: list[int] = Field(default_factory=lambda: [0, 255])
     mask_unmapped_value: int | None = 1
+    use_resized_cache: bool = True
+    overwrite_resized_cache: bool = False
 
     @field_validator("raw_root_dir", "prepared_root_dir", "images_dir", "masks_dir", mode="before")
     @classmethod
@@ -244,6 +246,7 @@ class StudentValidationConfig(StudentBaseConfig):
     threshold_preview: float = Field(default=0.5, ge=0.0, le=1.0)
     save_visual_examples: bool = True
     num_visual_examples: int = Field(default=12, gt=0)
+    save_visual_every_n_epochs: int = Field(default=5, gt=0)
 
     @field_validator("save_best_by")
     @classmethod

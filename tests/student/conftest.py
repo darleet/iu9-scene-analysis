@@ -69,6 +69,8 @@ def make_train_config(tmp_path: Path) -> Callable[[Path], StudentTrainConfig]:
                     "obstacle_value": 1,
                     "background_value": 0,
                     "ignore_value": 255,
+                    "use_resized_cache": False,
+                    "overwrite_resized_cache": False,
                 },
                 "teacher": {"config_path": "configs/base.yaml", "overwrite_teacher_heatmaps": False},
                 "input": {
@@ -134,6 +136,7 @@ def make_train_config(tmp_path: Path) -> Callable[[Path], StudentTrainConfig]:
                     "threshold_preview": 0.5,
                     "save_visual_examples": True,
                     "num_visual_examples": 2,
+                    "save_visual_every_n_epochs": 1,
                 },
                 "outputs": {
                     "root_dir": str(tmp_path / "artifacts"),

@@ -15,7 +15,7 @@ from scene_analysis.evaluation.metrics import compute_precision_recall_curve_dat
 from scene_analysis.evaluation.visualization import plot_precision_recall_curve
 from scene_analysis.student.artifacts import save_csv, save_json, save_yaml
 from scene_analysis.student.config import StudentTrainConfig
-from scene_analysis.student.dataset import StudentHeatmapDataset
+from scene_analysis.student.dataset import StudentHeatmapDataset, build_resized_student_cache
 from scene_analysis.student.losses import StudentHeatmapLoss
 from scene_analysis.student.metrics import (
     collect_scores_and_labels,
@@ -52,6 +52,9 @@ class StudentTrainer:
 
         train_loader, val_loader = self._create_dataloaders()
         self.model = create_student_model(self.student_name, self.model_config).to(self.device)
+        if self.device.type == "cuda":
+            torch.backends.cudnn.benchmark = True
+            self.model = self.model.to(memory_format=torch.channels_last)
         self.parameter_count = count_parameters(self.model)
         criterion = StudentHeatmapLoss(self.config.loss)
         optimizer = torch.optim.AdamW(
@@ -117,7 +120,7 @@ class StudentTrainer:
             if epoch % self.config.training.save_every_n_epochs == 0:
                 self.save_checkpoint(epoch, last_val_metrics, name=f"epoch_{epoch:03d}.pt")
 
-            if self.config.validation.save_visual_examples and self.config.outputs.save_visual_previews:
+            if self._should_save_visual_previews(epoch):
                 self.save_visual_previews(epoch, val_loader)
 
             logger.info(
@@ -366,6 +369,7 @@ class StudentTrainer:
         )
 
     def _create_dataloaders(self) -> tuple[DataLoader[dict[str, Any]], DataLoader[dict[str, Any]]]:
+        self._build_resized_caches()
         train_dataset = StudentHeatmapDataset(
             self.config.dataset.prepared_root_dir,
             "train",
@@ -384,22 +388,55 @@ class StudentTrainer:
         )
         generator = torch.Generator()
         generator.manual_seed(self.config.experiment.seed)
+        loader_options: dict[str, Any] = {
+            "batch_size": self.config.training.batch_size,
+            "num_workers": self.config.training.num_workers,
+            "pin_memory": self.device.type == "cuda",
+        }
+        if self.config.training.num_workers > 0:
+            loader_options["persistent_workers"] = True
+            loader_options["prefetch_factor"] = 4
         train_loader = DataLoader(
             train_dataset,
-            batch_size=self.config.training.batch_size,
             shuffle=True,
-            num_workers=self.config.training.num_workers,
-            pin_memory=self.device.type == "cuda",
             generator=generator,
+            **loader_options,
         )
         val_loader = DataLoader(
             val_dataset,
-            batch_size=self.config.training.batch_size,
             shuffle=False,
-            num_workers=self.config.training.num_workers,
-            pin_memory=self.device.type == "cuda",
+            **loader_options,
         )
         return train_loader, val_loader
+
+    def _build_resized_caches(self) -> None:
+        if not self.config.dataset.use_resized_cache:
+            return
+        logger.info(
+            "Preparing resized student cache at {}x{}",
+            self.config.input.height,
+            self.config.input.width,
+        )
+        for split in ("train", "val"):
+            summary = build_resized_student_cache(
+                self.config.dataset.prepared_root_dir,
+                split,
+                self.config.dataset,
+                self.config.input,
+            )
+            logger.info(
+                "Resized cache split={} total={} created={} skipped={} dir={}",
+                summary["split"],
+                summary["total"],
+                summary["created"],
+                summary["skipped"],
+                summary["cache_dir"],
+            )
+
+    def _should_save_visual_previews(self, epoch: int) -> bool:
+        if not self.config.validation.save_visual_examples or not self.config.outputs.save_visual_previews:
+            return False
+        return epoch == 1 or epoch % self.config.validation.save_visual_every_n_epochs == 0
 
     def _is_better(self, metrics: dict[str, float]) -> bool:
         metric = self._selection_metric(metrics)
@@ -429,7 +466,17 @@ class StudentTrainer:
     def _move_batch(self, batch: dict[str, Any]) -> dict[str, Any]:
         moved: dict[str, Any] = {}
         for key, value in batch.items():
-            moved[key] = value.to(self.device, non_blocking=True) if isinstance(value, torch.Tensor) else value
+            if not isinstance(value, torch.Tensor):
+                moved[key] = value
+                continue
+            if key == "image" and self.device.type == "cuda":
+                moved[key] = value.to(
+                    self.device,
+                    non_blocking=True,
+                    memory_format=torch.channels_last,
+                )
+            else:
+                moved[key] = value.to(self.device, non_blocking=True)
         return moved
 
     @property
