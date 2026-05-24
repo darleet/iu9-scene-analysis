@@ -32,6 +32,9 @@ scene-analysis = "scene_analysis.app.cli:app"
 [tool.poetry]
 packages = [{ include = "scene_analysis", from = "src" }]
 
+[tool.poetry.scripts]
+scene-analysis = "scene_analysis.app.cli:app"
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]

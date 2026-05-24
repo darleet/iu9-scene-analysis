@@ -32,6 +32,12 @@
 poetry install
 ```
 
+Если на Windows после `poetry install` команда `poetry run scene-analysis ...` не находится, используйте запасной entrypoint:
+
+```powershell
+poetry run python -m scene_analysis --help
+```
+
 ## Запуск
 
 ### Обработка видеофайла
