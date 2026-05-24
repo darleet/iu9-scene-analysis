@@ -22,7 +22,7 @@ DEFAULT_IMAGE_EXTENSIONS: tuple[str, ...] = (
 class ImageDirectoryReader:
     def __init__(self, input_dir: Path, extension: str | None = None) -> None:
         self.input_dir = input_dir.expanduser()
-        self.extension = extension.lower() if extension is not None else None
+        self.extension = extension if extension is not None else None
 
     def discover_images(self, max_images: int | None = None) -> list[Path]:
         """Найти изображения в директории"""

@@ -15,6 +15,7 @@ class RawStudentSample:
     sample_id: str
     image_path: Path
     mask_path: Path
+    raw_split: str | None = None
 
 
 def discover_raw_samples(config: StudentDatasetConfig, limit: int | None = None) -> list[RawStudentSample]:
@@ -26,24 +27,33 @@ def discover_raw_samples(config: StudentDatasetConfig, limit: int | None = None)
     if not images_dir.exists():
         raise FileNotFoundError(
             f"Raw images directory not found: {images_dir}. Expected structure: "
-            f"{raw_root}/images and {raw_root}/masks"
+            f"{raw_root}/train/<scene>/*{config.image_suffix}"
         )
     if not masks_dir.exists():
         raise FileNotFoundError(
             f"Raw masks directory not found: {masks_dir}. Expected structure: "
-            f"{raw_root}/images and {raw_root}/masks"
+            f"{raw_root}/train/<scene>/*{config.mask_suffix}"
         )
 
     mask_index = _build_mask_index(masks_dir, config.mask_suffix)
     image_paths = sorted(path for path in images_dir.rglob(f"*{config.image_suffix}") if path.is_file())
     samples: list[RawStudentSample] = []
     for image_path in image_paths:
-        sample_id = image_path.stem
+        sample_id = _sample_id_from_filename(image_path.name, config.image_suffix)
+        if sample_id is None:
+            continue
         mask_path = mask_index.get(sample_id)
         if mask_path is None:
             logger.warning("Skipping raw sample '{}' because matching mask is missing", sample_id)
             continue
-        samples.append(RawStudentSample(sample_id=sample_id, image_path=image_path, mask_path=mask_path))
+        samples.append(
+            RawStudentSample(
+                sample_id=sample_id,
+                image_path=image_path,
+                mask_path=mask_path,
+                raw_split=_infer_raw_split(images_dir, image_path),
+            )
+        )
         if limit is not None and len(samples) >= limit:
             break
 
@@ -63,6 +73,8 @@ def create_or_load_split(
     prepared_root_dir: Path,
     train_ratio: float,
     seed: int,
+    train_split_names: list[str] | None = None,
+    val_split_names: list[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Разбиение датасета на train/val выборки"""
     if not samples:
@@ -81,6 +93,17 @@ def create_or_load_split(
             logger.info("Loaded existing student split from {}", split_dir)
             return train_ids, val_ids
         logger.warning("Existing split is empty after filtering current samples; recreating {}", split_dir)
+
+    raw_train_ids, raw_val_ids = _split_by_raw_layout(samples, train_split_names, val_split_names)
+    if raw_train_ids and raw_val_ids:
+        _write_split_file(train_path, raw_train_ids)
+        _write_split_file(val_path, raw_val_ids)
+        logger.info(
+            "Created student split from raw layout: train={} val={}",
+            len(raw_train_ids),
+            len(raw_val_ids),
+        )
+        return raw_train_ids, raw_val_ids
 
     shuffled = sample_ids[:]
     random.Random(seed).shuffle(shuffled)
@@ -107,6 +130,31 @@ def _resolve_under_root(root: Path, path: Path) -> Path:
     return path if path.is_absolute() else root / path
 
 
+def _infer_raw_split(images_dir: Path, image_path: Path) -> str | None:
+    try:
+        relative = image_path.relative_to(images_dir)
+    except ValueError:
+        return None
+    parts = relative.parts
+    if len(parts) < 2:
+        return None
+    return parts[0].lower()
+
+
+def _split_by_raw_layout(
+    samples: list[RawStudentSample],
+    train_split_names: list[str] | None,
+    val_split_names: list[str] | None,
+) -> tuple[list[str], list[str]]:
+    if not train_split_names or not val_split_names:
+        return [], []
+    train_names = {item.lower() for item in train_split_names}
+    val_names = {item.lower() for item in val_split_names}
+    train_ids = sorted(sample.sample_id for sample in samples if sample.raw_split in train_names)
+    val_ids = sorted(sample.sample_id for sample in samples if sample.raw_split in val_names)
+    return train_ids, val_ids
+
+
 def _build_mask_index(masks_dir: Path, mask_suffix: str) -> dict[str, Path]:
     index: dict[str, Path] = {}
     for mask_path in sorted(path for path in masks_dir.rglob(f"*{Path(mask_suffix).suffix}") if path.is_file()):
@@ -121,9 +169,13 @@ def _build_mask_index(masks_dir: Path, mask_suffix: str) -> dict[str, Path]:
 
 
 def _sample_id_from_mask(filename: str, mask_suffix: str) -> str | None:
-    if not filename.endswith(mask_suffix):
+    return _sample_id_from_filename(filename, mask_suffix)
+
+
+def _sample_id_from_filename(filename: str, suffix: str) -> str | None:
+    if not filename.endswith(suffix):
         return None
-    sample_id = filename[: -len(mask_suffix)]
+    sample_id = filename[: -len(suffix)]
     return sample_id or None
 
 

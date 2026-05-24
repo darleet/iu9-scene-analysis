@@ -135,8 +135,10 @@ def maybe_resize_float_map(values: np.ndarray, output_shape: tuple[int, int]) ->
 def list_files_by_extension(directory: Path, extension: str) -> list[Path]:
     """Рекурсивно собрать файлы с указанным расширением"""
     normalized_directory = Path(directory).expanduser()
-    normalized_extension = extension.lower()
-    if not normalized_extension.startswith("."):
+    normalized_extension = extension.strip()
+    if not normalized_extension:
+        raise ValueError("File suffix must not be empty")
+    if "." not in normalized_extension and not normalized_extension.startswith("_"):
         normalized_extension = f".{normalized_extension}"
     if not normalized_directory.exists():
         return []

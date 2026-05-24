@@ -81,8 +81,8 @@ poetry run scene-analysis generate-predictions --config configs/base.yaml
 ```bash
 poetry run scene-analysis generate-predictions \
   --config configs/base.yaml \
-  --dataset-root data/datasets/road_obstacle_21_raw \
-  --images-dir images \
+  --dataset-root data/datasets/lost_and_found_raw \
+  --images-dir . \
   --predictions-dir predictions \
   --output-dir data/artifacts/image_run_001
 ```
@@ -98,7 +98,7 @@ poetry run scene-analysis evaluate-heatmap --config configs/base.yaml
 ```bash
 poetry run scene-analysis evaluate-heatmap \
   --config configs/base.yaml \
-  --dataset-root data/datasets/road_obstacle_21_raw \
+  --dataset-root data/datasets/lost_and_found_raw \
   --predictions-dir predictions \
   --output-dir data/artifacts/eval_run_001
 ```
@@ -122,12 +122,14 @@ Teacher pipeline нужен только на этапе подготовки д
 Ожидаемая сырая структура по умолчанию:
 
 ```text
-data/datasets/road_obstacle_21_raw/
-├── images/
-└── masks/
+data/datasets/lost_and_found_raw/
+├── train/<scene>/*_leftImg8bit.png
+├── train/<scene>/*_gtCoarse_labelIds.png
+├── test/<scene>/*_leftImg8bit.png
+└── test/<scene>/*_gtCoarse_labelIds.png
 ```
 
-Маски: `0` — background, `1` — obstacle, `255` — ignore. Если layout отличается, настройте `images_dir`, `masks_dir`, `image_suffix`, `mask_suffix` в `configs/student_train.yaml`.
+Для Lost and Found `*_gtCoarse_labelIds.png` приводятся к маскам проекта автоматически: `1` — free/background, `0` и `255` — ignore, остальные значения — obstacle. Если layout или label ids отличаются, настройте `images_dir`, `masks_dir`, `image_suffix`, `mask_suffix`, `mask_background_values`, `mask_ignore_values` и `mask_unmapped_value` в `configs/student_train.yaml`.
 
 ```bash
 poetry run scene-analysis prepare-student-data --config configs/student_train.yaml
@@ -136,7 +138,7 @@ poetry run scene-analysis prepare-student-data --config configs/student_train.ya
 Результат:
 
 ```text
-data/datasets/road_obstacle_21_prepared/
+data/datasets/lost_and_found_prepared/
 ├── split/train.txt
 ├── split/val.txt
 ├── train/images masks teacher_heatmaps
@@ -245,13 +247,13 @@ data/artifacts/student_camera/<run_name>/<student_name>/
 
 ### Как подготовить predictions_dir
 
-1. Подготовьте локальный датасет, например в `data/datasets/road_obstacle_21`.
-2. Положите obstacle masks в `masks/`.
+1. Подготовьте локальный Cityscapes/Lost-and-Found-like датасет, например в `data/datasets/lost_and_found_raw`.
+2. Положите obstacle masks рядом с изображениями или в отдельный каталог, указанный в `masks_dir`.
 3. Положите предсказанные heatmap в `predictions/`.
 4. Имена prediction и mask должны совпадать по `sample_id`, например:
 
-- `predictions/frame_000001.npy`
-- `masks/frame_000001.png`
+- `predictions/01_scene_000000_000010.npy`
+- `train/01_scene/01_scene_000000_000010_gtCoarse_labelIds.png`
 
 ## Результат запуска инференса
 

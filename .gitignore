@@ -4,6 +4,7 @@ __pycache__/
 dist/
 build/
 data/artifacts/*
+data/datasets/*
 *.pyc
 .idea/
 .DS_Store

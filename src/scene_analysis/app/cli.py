@@ -533,6 +533,7 @@ def generate_predictions(
             image_reader=image_reader,
             prediction_writer=prediction_writer,
             artifact_writer=artifact_writer,
+            image_suffix=config.evaluation.dataset.file_extension_images,
         )
 
         processed_samples = runner.run(max_images=max_images)

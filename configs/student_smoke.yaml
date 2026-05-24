@@ -3,18 +3,24 @@ experiment:
   seed: 1667
 
 dataset:
-  raw_root_dir: "data/datasets/road_obstacle_21_raw"
-  prepared_root_dir: "data/datasets/road_obstacle_21_prepared"
-  images_dir: "images"
-  masks_dir: "masks"
-  image_suffix: ".png"
-  mask_suffix: "_labels_semantic.png"
+  raw_root_dir: "data/datasets/lost_and_found_raw"
+  prepared_root_dir: "data/datasets/lost_and_found_prepared_smoke"
+  images_dir: "."
+  masks_dir: "."
+  image_suffix: "_leftImg8bit.png"
+  mask_suffix: "_gtCoarse_labelIds.png"
   teacher_suffix: ".npy"
   train_ratio: 0.8
   split_seed: 1667
+  raw_train_splits: ["train"]
+  raw_val_splits: ["val", "test"]
   obstacle_value: 1
   background_value: 0
   ignore_value: 255
+  mask_obstacle_values: []
+  mask_background_values: [1]
+  mask_ignore_values: [0, 255]
+  mask_unmapped_value: 1
 
 teacher:
   config_path: "configs/base.yaml"

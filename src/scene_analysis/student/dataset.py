@@ -97,7 +97,9 @@ class StudentHeatmapDataset(Dataset[dict[str, Any]]):
 
         samples: list[PreparedStudentSample] = []
         for image_path in sorted(images_dir.glob(f"*{self.dataset_config.image_suffix}")):
-            sample_id = image_path.stem
+            sample_id = _sample_id_from_filename(image_path.name, self.dataset_config.image_suffix)
+            if sample_id is None:
+                continue
             mask_path = masks_dir / f"{sample_id}{self.dataset_config.mask_suffix}"
             teacher_path = teacher_dir / f"{sample_id}{self.dataset_config.teacher_suffix}"
             if not mask_path.exists():
@@ -179,3 +181,10 @@ class StudentHeatmapDataset(Dataset[dict[str, Any]]):
         if heatmap.ndim != 2:
             raise ValueError(f"Teacher heatmap must be 2D, got shape {heatmap.shape} for {path}")
         return np.nan_to_num(heatmap.astype(np.float32), nan=0.0, posinf=1.0, neginf=0.0)
+
+
+def _sample_id_from_filename(filename: str, suffix: str) -> str | None:
+    if not filename.endswith(suffix):
+        return None
+    sample_id = filename[: -len(suffix)]
+    return sample_id or None

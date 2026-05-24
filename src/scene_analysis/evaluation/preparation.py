@@ -30,6 +30,7 @@ def build_valid_label_mask(
     obstacle_values: list[int],
     background_values: list[int],
     ignore_values: list[int],
+    unmapped_values: str | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Построить valid_mask и positive_mask с учетом ignore"""
     mask = np.asarray(gt_mask)
@@ -39,6 +40,18 @@ def build_valid_label_mask(
     obstacle_mask = np.isin(mask, obstacle_values)
     background_mask = np.isin(mask, background_values)
     ignore_mask = np.isin(mask, ignore_values)
+    known_mask = obstacle_mask | background_mask | ignore_mask
+
+    if unmapped_values is not None:
+        unmapped_mask = ~known_mask
+        if unmapped_values == "obstacle":
+            obstacle_mask = obstacle_mask | unmapped_mask
+        elif unmapped_values == "background":
+            background_mask = background_mask | unmapped_mask
+        elif unmapped_values == "ignore":
+            ignore_mask = ignore_mask | unmapped_mask
+        else:
+            raise ValueError("unmapped_values must be one of 'obstacle', 'background', 'ignore' or None")
 
     valid_mask = (obstacle_mask | background_mask) & (~ignore_mask)
     positive_mask = obstacle_mask & valid_mask

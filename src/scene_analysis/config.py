@@ -49,6 +49,15 @@ def _normalize_extension(value: str) -> str:
     return normalized
 
 
+def _normalize_file_suffix(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("File suffix must not be empty")
+    if "." not in normalized and not normalized.startswith("_"):
+        normalized = f".{normalized}"
+    return normalized
+
+
 class BaseConfigModel(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
@@ -301,14 +310,14 @@ class ObstacleHeatmapConfig(BaseConfigModel):
 class EvaluationDatasetConfig(BaseConfigModel):
     """Настройки локального layout датасета для evaluation"""
 
-    name: str = "road_obstacle_21_raw"
-    root_dir: Path = Path("data/datasets/road_obstacle_21_raw")
-    images_dir: Path = Path("images")
-    masks_dir: Path = Path("masks")
+    name: str = "lost_and_found"
+    root_dir: Path = Path("data/datasets/lost_and_found_raw")
+    images_dir: Path = Path(".")
+    masks_dir: Path = Path(".")
     predictions_dir: Path = Path("predictions")
     split_file: Path | None = None
-    file_extension_images: str = ".png"
-    file_extension_masks: str = ".png"
+    file_extension_images: str = "_leftImg8bit.png"
+    file_extension_masks: str = "_gtCoarse_labelIds.png"
     file_extension_predictions: str = ".npy"
 
     @field_validator("name")
@@ -327,22 +336,30 @@ class EvaluationDatasetConfig(BaseConfigModel):
     @field_validator("file_extension_images", "file_extension_masks", "file_extension_predictions")
     @classmethod
     def normalize_extensions(cls, value: str) -> str:
-        return _normalize_extension(value)
+        return _normalize_file_suffix(value)
 
 
 class EvaluationLabelsConfig(BaseConfigModel):
     """Настройки кодов разметки obstacle/background/ignore"""
 
-    obstacle_values: list[int] = Field(default_factory=lambda: [1])
-    background_values: list[int] = Field(default_factory=lambda: [0])
-    ignore_values: list[int] = Field(default_factory=lambda: [255])
+    obstacle_values: list[int] = Field(default_factory=list)
+    background_values: list[int] = Field(default_factory=lambda: [1])
+    ignore_values: list[int] = Field(default_factory=lambda: [0, 255])
+    unmapped_values: str | None = "obstacle"
 
     @field_validator("obstacle_values", "background_values", "ignore_values")
     @classmethod
-    def validate_non_empty_values(cls, value: list[int], info: Any) -> list[int]:
-        normalized = [int(item) for item in value]
-        if not normalized:
-            raise ValueError(f"Evaluation labels '{info.field_name}' must not be empty")
+    def normalize_label_values(cls, value: list[int]) -> list[int]:
+        return [int(item) for item in value]
+
+    @field_validator("unmapped_values")
+    @classmethod
+    def validate_unmapped_values(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized not in {"obstacle", "background", "ignore"}:
+            raise ValueError("labels.unmapped_values must be one of 'obstacle', 'background', 'ignore' or null")
         return normalized
 
 

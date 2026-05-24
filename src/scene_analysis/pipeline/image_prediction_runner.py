@@ -16,11 +16,13 @@ class ImagePredictionRunner:
         image_reader: ImageDirectoryReader,
         prediction_writer: HeatmapPredictionWriter,
         artifact_writer: ArtifactWriter | None = None,
+        image_suffix: str | None = None,
     ) -> None:
         self.pipeline = pipeline
         self.image_reader = image_reader
         self.prediction_writer = prediction_writer
         self.artifact_writer = artifact_writer
+        self.image_suffix = image_suffix
 
     def run(self, max_images: int | None = None) -> int:
         """Сгенерировать predictions для всех найденных изображений"""
@@ -45,8 +47,12 @@ class ImagePredictionRunner:
 
         return processed_samples
 
-    @staticmethod
-    def _sample_id_from_frame(frame: FrameData) -> str:
+    def _sample_id_from_frame(self, frame: FrameData) -> str:
         if frame.source_path is None:
             return f"sample_{frame.frame_index:06d}"
-        return Path(frame.source_path).stem
+        path = Path(frame.source_path)
+        if self.image_suffix is not None and path.name.endswith(self.image_suffix):
+            sample_id = path.name[: -len(self.image_suffix)]
+            if sample_id:
+                return sample_id
+        return path.stem

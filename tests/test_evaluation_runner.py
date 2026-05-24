@@ -24,31 +24,31 @@ def _write_png(path: Path, array: np.ndarray) -> None:
 
 
 def _prepare_dataset(root_dir: Path) -> None:
-    images_dir = root_dir / "images"
-    masks_dir = root_dir / "masks"
+    images_dir = root_dir / "train" / "scene"
+    masks_dir = root_dir / "train" / "scene"
     predictions_dir = root_dir / "predictions"
     images_dir.mkdir(parents=True)
     masks_dir.mkdir(parents=True)
     predictions_dir.mkdir(parents=True)
 
-    _write_png(images_dir / "sample_001.png", np.zeros((4, 4, 3), dtype=np.uint8))
-    _write_png(images_dir / "sample_002.png", np.zeros((4, 4, 3), dtype=np.uint8))
+    _write_png(images_dir / "sample_001_leftImg8bit.png", np.zeros((4, 4, 3), dtype=np.uint8))
+    _write_png(images_dir / "sample_002_leftImg8bit.png", np.zeros((4, 4, 3), dtype=np.uint8))
 
     mask_1 = np.array(
         [
-            [0, 1, 1, 0],
-            [0, 1, 255, 0],
-            [0, 0, 0, 0],
-            [1, 1, 0, 0],
+            [1, 2, 2, 1],
+            [1, 2, 0, 1],
+            [1, 1, 1, 1],
+            [2, 2, 1, 1],
         ],
         dtype=np.uint8,
     )
     mask_2 = np.array(
         [
-            [0, 0, 0, 0],
-            [0, 1, 1, 0],
-            [0, 1, 0, 0],
-            [0, 0, 0, 255],
+            [1, 1, 1, 1],
+            [1, 2, 2, 1],
+            [1, 2, 1, 1],
+            [1, 1, 1, 0],
         ],
         dtype=np.uint8,
     )
@@ -71,14 +71,14 @@ def _prepare_dataset(root_dir: Path) -> None:
         dtype=np.float32,
     )
 
-    _write_png(masks_dir / "sample_001.png", mask_1)
-    _write_png(masks_dir / "sample_002.png", mask_2)
+    _write_png(masks_dir / "sample_001_gtCoarse_labelIds.png", mask_1)
+    _write_png(masks_dir / "sample_002_gtCoarse_labelIds.png", mask_2)
     np.save(predictions_dir / "sample_001.npy", pred_1)
     np.save(predictions_dir / "sample_002.npy", pred_2)
 
 
 def test_runner_computes_summary_and_saves_outputs(tmp_path: Path) -> None:
-    dataset_root = tmp_path / "road_obstacle_21_raw"
+    dataset_root = tmp_path / "lost_and_found"
     outputs_dir = tmp_path / "eval_outputs"
     _prepare_dataset(dataset_root)
 
@@ -86,20 +86,21 @@ def test_runner_computes_summary_and_saves_outputs(tmp_path: Path) -> None:
         EvaluationConfig(
             enabled=True,
             dataset=EvaluationDatasetConfig(
-                name="road_obstacle_21_raw",
+                name="lost_and_found",
                 root_dir=dataset_root,
-                images_dir="images",
-                masks_dir="masks",
+                images_dir=".",
+                masks_dir=".",
                 predictions_dir="predictions",
                 split_file=None,
-                file_extension_images=".png",
-                file_extension_masks=".png",
+                file_extension_images="_leftImg8bit.png",
+                file_extension_masks="_gtCoarse_labelIds.png",
                 file_extension_predictions=".npy",
             ),
             labels=EvaluationLabelsConfig(
-                obstacle_values=[1],
-                background_values=[0],
-                ignore_values=[255],
+                obstacle_values=[],
+                background_values=[1],
+                ignore_values=[0, 255],
+                unmapped_values="obstacle",
             ),
             prediction=EvaluationPredictionConfig(
                 resize_to_gt=True,
@@ -120,7 +121,7 @@ def test_runner_computes_summary_and_saves_outputs(tmp_path: Path) -> None:
 
     summary = runner.run()
 
-    assert summary.dataset_name == "road_obstacle_21_raw"
+    assert summary.dataset_name == "lost_and_found"
     assert summary.num_samples == 2
     assert summary.num_valid_samples == 2
     assert summary.average_precision > 0.9
@@ -136,5 +137,5 @@ def test_runner_computes_summary_and_saves_outputs(tmp_path: Path) -> None:
     assert hard_examples_path.exists()
 
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
-    assert payload["dataset_name"] == "road_obstacle_21_raw"
+    assert payload["dataset_name"] == "lost_and_found"
     assert "average_precision" in payload

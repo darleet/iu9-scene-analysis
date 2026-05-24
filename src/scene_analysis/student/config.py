@@ -52,18 +52,24 @@ class StudentExperimentConfig(StudentBaseConfig):
 
 
 class StudentDatasetConfig(StudentBaseConfig):
-    raw_root_dir: Path = Path("data/datasets/road_obstacle_21_raw")
-    prepared_root_dir: Path = Path("data/datasets/road_obstacle_21_prepared")
-    images_dir: Path = Path("images")
-    masks_dir: Path = Path("masks")
-    image_suffix: str = ".png"
-    mask_suffix: str = "_labels_semantic.png"
+    raw_root_dir: Path = Path("data/datasets/lost_and_found_raw")
+    prepared_root_dir: Path = Path("data/datasets/lost_and_found_prepared")
+    images_dir: Path = Path(".")
+    masks_dir: Path = Path(".")
+    image_suffix: str = "_leftImg8bit.png"
+    mask_suffix: str = "_gtCoarse_labelIds.png"
     teacher_suffix: str = ".npy"
     train_ratio: float = Field(default=0.8, gt=0.0, lt=1.0)
     split_seed: int = 1667
+    raw_train_splits: list[str] = Field(default_factory=lambda: ["train"])
+    raw_val_splits: list[str] = Field(default_factory=lambda: ["val", "test"])
     obstacle_value: int = 1
     background_value: int = 0
     ignore_value: int = 255
+    mask_obstacle_values: list[int] = Field(default_factory=list)
+    mask_background_values: list[int] = Field(default_factory=lambda: [1])
+    mask_ignore_values: list[int] = Field(default_factory=lambda: [0, 255])
+    mask_unmapped_value: int | None = 1
 
     @field_validator("raw_root_dir", "prepared_root_dir", "images_dir", "masks_dir", mode="before")
     @classmethod
@@ -76,6 +82,16 @@ class StudentDatasetConfig(StudentBaseConfig):
     @classmethod
     def normalize_suffixes(cls, value: str) -> str:
         return _normalize_extension(value)
+
+    @field_validator("mask_obstacle_values", "mask_background_values", "mask_ignore_values")
+    @classmethod
+    def normalize_mask_source_values(cls, value: list[int]) -> list[int]:
+        return [int(item) for item in value]
+
+    @field_validator("raw_train_splits", "raw_val_splits")
+    @classmethod
+    def normalize_split_names(cls, value: list[str]) -> list[str]:
+        return [item.strip().lower() for item in value if item.strip()]
 
     @model_validator(mode="after")
     def validate_mask_values(self) -> StudentDatasetConfig:

@@ -70,19 +70,20 @@ obstacle_heatmap:
 evaluation:
   enabled: true
   dataset:
-    name: "road_obstacle_21_raw"
-    root_dir: "data/datasets/road_obstacle_21_raw"
-    images_dir: "images"
-    masks_dir: "masks"
+    name: "lost_and_found"
+    root_dir: "data/datasets/lost_and_found_raw"
+    images_dir: "."
+    masks_dir: "."
     predictions_dir: "predictions"
     split_file: null
-    file_extension_images: ".png"
-    file_extension_masks: ".png"
+    file_extension_images: "_leftImg8bit.png"
+    file_extension_masks: "_gtCoarse_labelIds.png"
     file_extension_predictions: ".npy"
   labels:
-    obstacle_values: [1]
-    background_values: [0]
-    ignore_values: [255]
+    obstacle_values: []
+    background_values: [1]
+    ignore_values: [0, 255]
+    unmapped_values: "obstacle"
   prediction:
     resize_to_gt: true
     clip_to_unit_range: true
@@ -150,7 +151,7 @@ def test_load_config_from_base_yaml() -> None:
     assert config.obstacle_heatmap.road_suppression.mode == "row_baseline"
     assert config.obstacle_heatmap.visualization.colormap == "inferno"
     assert config.evaluation.enabled is True
-    assert config.evaluation.dataset.name == "road_obstacle_21_raw"
+    assert config.evaluation.dataset.name == "lost_and_found"
     assert config.evaluation.dataset.file_extension_predictions == ".npy"
 
 
@@ -342,19 +343,20 @@ def test_invalid_evaluation_prediction_extension_raises_error(tmp_path: Path) ->
 evaluation:
   enabled: true
   dataset:
-    name: "road_obstacle_21_raw"
-    root_dir: "data/datasets/road_obstacle_21_raw"
-    images_dir: "images"
-    masks_dir: "masks"
+    name: "lost_and_found"
+    root_dir: "data/datasets/lost_and_found_raw"
+    images_dir: "."
+    masks_dir: "."
     predictions_dir: "predictions"
     split_file: null
-    file_extension_images: ".png"
-    file_extension_masks: ".png"
+    file_extension_images: "_leftImg8bit.png"
+    file_extension_masks: "_gtCoarse_labelIds.png"
     file_extension_predictions: ".png"
   labels:
-    obstacle_values: [1]
-    background_values: [0]
-    ignore_values: [255]
+    obstacle_values: []
+    background_values: [1]
+    ignore_values: [0, 255]
+    unmapped_values: "obstacle"
   prediction:
     resize_to_gt: true
     clip_to_unit_range: true

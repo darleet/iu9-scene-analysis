@@ -9,7 +9,7 @@ import numpy as np
 from loguru import logger
 
 from scene_analysis.config import EvaluationConfig
-from scene_analysis.evaluation.dataset import RoadObstacle21Dataset
+from scene_analysis.evaluation.dataset import CityscapesLikeDataset
 from scene_analysis.evaluation.io import load_mask, load_prediction
 from scene_analysis.evaluation.metrics import (
     compute_average_precision,
@@ -106,6 +106,7 @@ class EvaluationRunner:
                 obstacle_values=self.config.labels.obstacle_values,
                 background_values=self.config.labels.background_values,
                 ignore_values=self.config.labels.ignore_values,
+                unmapped_values=self.config.labels.unmapped_values,
             )
             scores, labels = flatten_scores_and_labels(prediction, valid_mask, positive_mask)
 
@@ -223,10 +224,8 @@ class EvaluationRunner:
                 top_k=self.config.outputs.hard_examples_top_k,
             )
 
-    def _create_dataset(self) -> RoadObstacle21Dataset:
-        if self.config.dataset.name != "road_obstacle_21_raw":
-            raise ValueError(f"Unsupported evaluation dataset: {self.config.dataset.name}")
-        return RoadObstacle21Dataset(self.config.dataset)
+    def _create_dataset(self) -> CityscapesLikeDataset:
+        return CityscapesLikeDataset(self.config.dataset)
 
     @staticmethod
     def _write_csv(path: Path, rows: list[dict[str, object]]) -> None:

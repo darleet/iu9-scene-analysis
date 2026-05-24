@@ -9,7 +9,7 @@ from scene_analysis.evaluation.types import EvaluationSample
 from scene_analysis.utils import list_files_by_extension
 
 
-class RoadObstacle21Dataset:
+class CityscapesLikeDataset:
     def __init__(self, config: EvaluationDatasetConfig) -> None:
         self.config = config
         self.root_dir = config.root_dir
@@ -38,7 +38,9 @@ class RoadObstacle21Dataset:
             self.config.file_extension_predictions,
         )
         for prediction_path in prediction_files:
-            sample_id = prediction_path.stem
+            sample_id = _sample_id_from_filename(prediction_path.name, self.config.file_extension_predictions)
+            if sample_id is None:
+                continue
             if split_ids is not None and sample_id not in split_ids:
                 continue
 
@@ -86,7 +88,9 @@ class RoadObstacle21Dataset:
     def _build_index(directory: Path, extension: str) -> dict[str, Path]:
         index: dict[str, Path] = {}
         for path in list_files_by_extension(directory, extension):
-            sample_id = path.stem
+            sample_id = _sample_id_from_filename(path.name, extension)
+            if sample_id is None:
+                continue
             if sample_id in index:
                 logger.warning(
                     "Duplicate file for sample '{}' detected: '{}' will be ignored in favor of '{}'",
@@ -97,3 +101,10 @@ class RoadObstacle21Dataset:
                 continue
             index[sample_id] = path
         return index
+
+
+def _sample_id_from_filename(filename: str, suffix: str) -> str | None:
+    if not filename.endswith(suffix):
+        return None
+    sample_id = filename[: -len(suffix)]
+    return sample_id or None
