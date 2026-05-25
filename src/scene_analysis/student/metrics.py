@@ -24,6 +24,39 @@ def compute_global_average_precision(scores: np.ndarray, labels: np.ndarray) -> 
     return compute_average_precision(scores, labels)
 
 
+def compute_binary_confusion(
+    final_heatmap: torch.Tensor,
+    obstacle_target: torch.Tensor,
+    valid_mask: torch.Tensor,
+    threshold: float,
+) -> dict[str, int]:
+    pred = final_heatmap.detach().float().cpu() >= float(threshold)
+    target = obstacle_target.detach().float().cpu() > 0.5
+    valid = valid_mask.detach().float().cpu() > 0.5
+
+    pred = pred & valid
+    target = target & valid
+    true_positive = pred & target
+    false_positive = pred & (~target)
+    false_negative = (~pred) & target & valid
+    true_negative = (~pred) & (~target) & valid
+    return {
+        "tp": int(true_positive.sum().item()),
+        "fp": int(false_positive.sum().item()),
+        "fn": int(false_negative.sum().item()),
+        "tn": int(true_negative.sum().item()),
+    }
+
+
+def compute_f1_iou_from_confusion(tp: float, fp: float, fn: float) -> dict[str, float]:
+    f1_denominator = 2.0 * tp + fp + fn
+    iou_denominator = tp + fp + fn
+    return {
+        "f1": float("nan") if f1_denominator <= 0.0 else float((2.0 * tp) / f1_denominator),
+        "iou": float("nan") if iou_denominator <= 0.0 else float(tp / iou_denominator),
+    }
+
+
 def compute_heatmap_stats(
     final_heatmap: torch.Tensor,
     valid_mask: torch.Tensor,

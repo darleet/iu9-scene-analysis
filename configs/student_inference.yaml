@@ -14,7 +14,7 @@ video_folder:
   output_dir: "data/artifacts/student_video_folder"
   video_extensions: [".mp4", ".avi", ".mov", ".mkv"]
   max_frames: null
-  sample_every_n: 1
+  sample_every_n: 10
 
 camera:
   camera_index: 0
@@ -27,9 +27,9 @@ camera:
 
 visualization:
   colormap: "inferno"
-  alpha: 0.45
+  alpha: 0.5
   show_binary_mask: true
-  threshold: 0.5
+  threshold: 0.3
   draw_stats: true
   draw_model_name: true
 

@@ -19,6 +19,8 @@ from scene_analysis.student.dataset import StudentHeatmapDataset, build_resized_
 from scene_analysis.student.losses import StudentHeatmapLoss
 from scene_analysis.student.metrics import (
     collect_scores_and_labels,
+    compute_binary_confusion,
+    compute_f1_iou_from_confusion,
     compute_global_average_precision,
     compute_heatmap_stats,
 )
@@ -98,6 +100,8 @@ class StudentTrainer:
                 "train_loss": last_train_metrics["train_loss"],
                 "val_loss": last_val_metrics["val_loss"],
                 "val_ap": last_val_metrics["val_ap"],
+                "val_f1": last_val_metrics["val_f1"],
+                "val_iou": last_val_metrics["val_iou"],
                 "loss_bce": last_val_metrics["loss_bce"],
                 "loss_dice": last_val_metrics["loss_dice"],
                 "loss_distill": last_val_metrics["loss_distill"],
@@ -124,12 +128,14 @@ class StudentTrainer:
                 self.save_visual_previews(epoch, val_loader)
 
             logger.info(
-                "Epoch {}/{}: train_loss={:.4f} val_loss={:.4f} val_ap={}",
+                "Epoch {}/{}: train_loss={:.4f} val_loss={:.4f} val_ap={} val_f1={} val_iou={}",
                 epoch,
                 self.config.training.epochs,
                 last_train_metrics["train_loss"],
                 last_val_metrics["val_loss"],
                 _format_float(last_val_metrics["val_ap"]),
+                _format_float(last_val_metrics["val_f1"]),
+                _format_float(last_val_metrics["val_iou"]),
             )
 
         self._save_pr_curve()
@@ -226,6 +232,10 @@ class StudentTrainer:
             "positive_pixels": 0.0,
             "negative_pixels": 0.0,
             "valid_pixels": 0.0,
+            "tp": 0.0,
+            "fp": 0.0,
+            "fn": 0.0,
+            "tn": 0.0,
         }
         all_scores: list[np.ndarray] = []
         all_labels: list[np.ndarray] = []
@@ -262,7 +272,16 @@ class StudentTrainer:
                     batch["obstacle_target"],
                 )
                 for key in stats_totals:
-                    stats_totals[key] += float(stats[key])
+                    if key in stats:
+                        stats_totals[key] += float(stats[key])
+                confusion = compute_binary_confusion(
+                    outputs["final_heatmap"],
+                    batch["obstacle_target"],
+                    batch["valid_mask"],
+                    self.config.validation.threshold_preview,
+                )
+                for key, value in confusion.items():
+                    stats_totals[key] += float(value)
                 if self.config.validation.compute_average_precision:
                     scores, labels = collect_scores_and_labels(
                         outputs["final_heatmap"],
@@ -289,6 +308,20 @@ class StudentTrainer:
         averaged["positive_pixels"] = stats_totals["positive_pixels"]
         averaged["negative_pixels"] = stats_totals["negative_pixels"]
         averaged["valid_pixels"] = stats_totals["valid_pixels"]
+        averaged["tp"] = stats_totals["tp"]
+        averaged["fp"] = stats_totals["fp"]
+        averaged["fn"] = stats_totals["fn"]
+        averaged["tn"] = stats_totals["tn"]
+        averaged.update(
+            {
+                f"val_{key}": value
+                for key, value in compute_f1_iou_from_confusion(
+                    stats_totals["tp"],
+                    stats_totals["fp"],
+                    stats_totals["fn"],
+                ).items()
+            }
+        )
 
         if all_scores and all_labels:
             self._last_val_scores = np.concatenate(all_scores)
@@ -318,6 +351,8 @@ class StudentTrainer:
             "normalize_std": self.config.input.normalize_std,
             "epoch": epoch,
             "val_ap": metrics.get("val_ap", float("nan")),
+            "val_f1": metrics.get("val_f1", float("nan")),
+            "val_iou": metrics.get("val_iou", float("nan")),
             "parameter_count": self.parameter_count,
             "config": self.config.model_dump(mode="json"),
         }
@@ -336,6 +371,8 @@ class StudentTrainer:
                 "train_loss",
                 "val_loss",
                 "val_ap",
+                "val_f1",
+                "val_iou",
                 "loss_bce",
                 "loss_dice",
                 "loss_distill",
@@ -366,6 +403,9 @@ class StudentTrainer:
             "best_val_ap": self.best_val_ap,
             "last_train_loss": last_train_metrics.get("train_loss"),
             "last_val_loss": last_val_metrics.get("val_loss"),
+            "last_val_f1": last_val_metrics.get("val_f1"),
+            "last_val_iou": last_val_metrics.get("val_iou"),
+            "threshold": self.config.validation.threshold_preview,
             "heatmap_min": last_val_metrics.get("heatmap_min"),
             "heatmap_max": last_val_metrics.get("heatmap_max"),
             "heatmap_mean": last_val_metrics.get("heatmap_mean"),
