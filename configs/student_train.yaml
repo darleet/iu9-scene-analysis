@@ -25,7 +25,7 @@ dataset:
   overwrite_resized_cache: false
 
 teacher:
-  config_path: "configs/base.yaml"
+  config_path: "configs/teacher_depth_anything_large.yaml"
   overwrite_teacher_heatmaps: false
 
 input:
@@ -64,10 +64,10 @@ models:
 
 loss:
   bce_weight: 1.5
-  dice_weight: 1.5
-  distill_mse_weight: 0.1
+  dice_weight: 3.0
+  distill_mse_weight: 0.5
   offroad_weight: 1.0
-  positive_class_weight: 15.0
+  positive_class_weight: 60.0
   eps: 0.000001
 
 optimizer:

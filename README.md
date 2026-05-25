@@ -109,7 +109,7 @@ Student-модели работают по RGB-кадру без Depth Anything 
 
 `RGB image -> student model -> obstacle_logits -> sigmoid -> final_heatmap = obstacle_prob`
 
-Teacher pipeline нужен только на этапе подготовки датасета: он генерирует `teacher_heatmaps/*.npy`, которые используются в distillation loss при обучении.
+Teacher pipeline нужен только на этапе подготовки датасета: он генерирует `teacher_heatmaps/*.npy`, которые используются в distillation loss при обучении. Основной student-конфиг использует `configs/teacher_depth_anything_large.yaml` с `depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf`, чтобы teacher был сильнее student-моделей.
 
 Поддерживаются три student-варианта:
 
@@ -147,7 +147,7 @@ data/datasets/lost_and_found_prepared/
 └── prepare_summary.json
 ```
 
-Повторный запуск не пересчитывает teacher heatmaps. Для пересчета:
+Повторный запуск не пересчитывает teacher heatmaps. Если teacher-конфиг изменился, подготовка остановится с ошибкой вместо тихого использования старых `.npy`. Для явного пересчета:
 
 ```bash
 poetry run scene-analysis prepare-student-data \
@@ -310,3 +310,4 @@ data/artifacts/student_camera/<run_name>/<student_name>/
 - `depth-anything/Depth-Anything-V2-Base-hf`
 - `depth-anything/Depth-Anything-V2-Metric-Outdoor-Small-hf`
 - `depth-anything/Depth-Anything-V2-Metric-Outdoor-Base-hf`
+- `depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf`

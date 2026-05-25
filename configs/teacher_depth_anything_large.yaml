@@ -1,0 +1,110 @@
+app:
+  name: "scene-analysis-teacher-large"
+  debug: true
+
+input:
+  source_path: "data/raw/sample.mp4"
+  max_frames: 100
+  sample_every_n: 5
+
+preprocessing:
+  resize_width: 512
+  resize_height: 256
+  normalize_to_float: false
+  roi:
+    enabled: false
+    x: 0
+    y: 0
+    width: 1920
+    height: 1080
+
+depth:
+  enabled: true
+  provider: "depth_anything_v2"
+  model: "depth-anything/Depth-Anything-V2-Metric-Outdoor-Large-hf"
+  device: "auto"
+  cache_dir: null
+  use_fp16: true
+  compile_model: false
+  save_raw_depth_npy: true
+  save_depth_colormap: true
+  normalize_depth_for_viz: true
+  clip_percentiles:
+    min: 2.0
+    max: 98.0
+
+obstacle_heatmap:
+  enabled: true
+  near_score:
+    use_relative_depth: false
+    invert_depth: false
+    clip_min_percentile: 2.0
+    clip_max_percentile: 98.0
+    gamma: 1.0
+  roi:
+    enabled: false
+    top_ignore_ratio: 0.22
+    left_ignore_ratio: 0.0
+    right_ignore_ratio: 0.0
+    bottom_keep_ratio: 1.0
+  road_suppression:
+    enabled: false
+    mode: "row_baseline"
+    bottom_strip_ratio: 0.30
+    row_smooth_kernel: 11
+    baseline_quantile: 0.60
+    suppression_strength: 1.0
+    min_row_activation: 0.03
+    preserve_vertical_edges: true
+    edge_weight: 0.35
+  postprocess:
+    blur_kernel_size: 5
+    morph_kernel_size: 5
+    min_activation: 0.05
+    normalize_output: true
+  visualization:
+    save_heatmap_npy: true
+    save_heatmap_png: true
+    save_overlay_png: true
+    colormap: "inferno"
+
+evaluation:
+  enabled: true
+  dataset:
+    name: "lost_and_found"
+    root_dir: "data/datasets/lost_and_found_raw"
+    images_dir: "."
+    masks_dir: "."
+    predictions_dir: "predictions"
+    split_file: null
+    file_extension_images: "_leftImg8bit.png"
+    file_extension_masks: "_gtCoarse_labelIds.png"
+    file_extension_predictions: ".npy"
+  labels:
+    obstacle_values: []
+    background_values: [1]
+    ignore_values: [0, 255]
+    unmapped_values: "obstacle"
+  prediction:
+    resize_to_gt: true
+    clip_to_unit_range: true
+    allow_png_heatmaps: false
+  metrics:
+    average_precision: true
+  outputs:
+    output_dir: "data/artifacts/eval_teacher_large"
+    save_pr_curve_png: true
+    save_per_sample_csv: true
+    save_summary_json: true
+    save_hard_examples: true
+    hard_examples_top_k: 20
+
+output:
+  output_dir: "data/artifacts/teacher_large"
+  save_original_frames: true
+  save_preprocessed_frames: true
+  save_overlay_frames: true
+  save_jsonl: true
+
+runtime:
+  log_level: "INFO"

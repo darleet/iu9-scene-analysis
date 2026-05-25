@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import shutil
 from pathlib import Path
 from typing import Any
@@ -20,6 +22,8 @@ from scene_analysis.student.visualization import save_heatmap_preview
 from scene_analysis.types import FrameData
 from scene_analysis.utils import safe_mkdir
 
+TEACHER_METADATA_FILENAME = "teacher_metadata.json"
+
 
 def prepare_student_data(
     config: StudentTrainConfig,
@@ -29,6 +33,10 @@ def prepare_student_data(
 ) -> dict[str, Any]:
     """Подготовка train/val выборок и тепловой карты учиеля"""
     effective_overwrite = overwrite_teacher_heatmaps or config.teacher.overwrite_teacher_heatmaps
+    teacher_metadata = _build_teacher_metadata(config)
+    if not effective_overwrite:
+        _validate_existing_teacher_metadata(config.dataset.prepared_root_dir, teacher_metadata)
+
     samples = discover_raw_samples(config.dataset, limit=limit)
     train_ids, val_ids = create_or_load_split(
         samples=samples,
@@ -83,10 +91,14 @@ def prepare_student_data(
                 save_heatmap_preview(np.load(heatmap_path), preview_path)
                 preview_paths.append(str(preview_path))
 
+    if sum(generated.values()) > 0 or _has_existing_teacher_heatmaps(config.dataset.prepared_root_dir):
+        save_json(_teacher_metadata_path(config.dataset.prepared_root_dir), teacher_metadata)
+
     summary = {
         "status": "ok",
         "raw_root_dir": str(config.dataset.raw_root_dir),
         "prepared_root_dir": str(config.dataset.prepared_root_dir),
+        "teacher_metadata_path": str(_teacher_metadata_path(config.dataset.prepared_root_dir)),
         "train_samples": len(train_ids),
         "val_samples": len(val_ids),
         "copied": copied,
@@ -107,6 +119,104 @@ def prepare_student_data(
         sum(skipped_existing.values()),
     )
     return summary
+
+
+def _build_teacher_metadata(config: StudentTrainConfig) -> dict[str, Any]:
+    teacher_config = load_config(config.teacher.config_path)
+    teacher_config.preprocessing.roi.enabled = False
+    teacher_config.preprocessing.resize_width = config.input.width
+    teacher_config.preprocessing.resize_height = config.input.height
+
+    payload: dict[str, Any] = {
+        "version": 1,
+        "teacher_config_path": str(config.teacher.config_path),
+        "student_input": {
+            "height": int(config.input.height),
+            "width": int(config.input.width),
+        },
+        "teacher": {
+            "depth": teacher_config.depth.model_dump(mode="json"),
+            "preprocessing": teacher_config.preprocessing.model_dump(mode="json"),
+            "obstacle_heatmap": teacher_config.obstacle_heatmap.model_dump(mode="json"),
+        },
+    }
+    payload["fingerprint"] = _metadata_fingerprint(payload)
+    return payload
+
+
+def _metadata_fingerprint(payload: dict[str, Any]) -> str:
+    comparable = {key: value for key, value in payload.items() if key != "fingerprint"}
+    dumped = json.dumps(comparable, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(dumped.encode("utf-8")).hexdigest()
+
+
+def _validate_existing_teacher_metadata(
+    prepared_root_dir: Path,
+    expected_metadata: dict[str, Any],
+) -> None:
+    if not _has_existing_teacher_heatmaps(prepared_root_dir):
+        return
+
+    metadata_path = _teacher_metadata_path(prepared_root_dir)
+    if not metadata_path.exists():
+        _raise_teacher_metadata_error(metadata_path, None, expected_metadata)
+
+    try:
+        with metadata_path.open("r", encoding="utf-8") as file:
+            actual_metadata: Any = json.load(file)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(
+            "Existing teacher heatmap metadata is unreadable. "
+            f"path='{metadata_path}' error='{exc}'. "
+            "Regenerate teacher heatmaps explicitly with: "
+            "poetry run scene-analysis prepare-student-data --config <student_train.yaml> --overwrite-teacher-heatmaps"
+        ) from exc
+
+    if not isinstance(actual_metadata, dict):
+        _raise_teacher_metadata_error(metadata_path, None, expected_metadata)
+
+    if actual_metadata.get("fingerprint") != expected_metadata.get("fingerprint"):
+        _raise_teacher_metadata_error(metadata_path, actual_metadata, expected_metadata)
+
+
+def _raise_teacher_metadata_error(
+    metadata_path: Path,
+    actual_metadata: dict[str, Any] | None,
+    expected_metadata: dict[str, Any],
+) -> None:
+    actual_model = _metadata_depth_model(actual_metadata)
+    expected_model = _metadata_depth_model(expected_metadata)
+    raise ValueError(
+        "Existing teacher heatmaps were generated with a different or unknown teacher configuration. "
+        f"metadata_path='{metadata_path}' existing_depth_model='{actual_model}' "
+        f"expected_depth_model='{expected_model}'. "
+        "Regenerate teacher heatmaps explicitly with: "
+        "poetry run scene-analysis prepare-student-data --config <student_train.yaml> --overwrite-teacher-heatmaps"
+    )
+
+
+def _metadata_depth_model(metadata: dict[str, Any] | None) -> str | None:
+    if not metadata:
+        return None
+    teacher = metadata.get("teacher")
+    if not isinstance(teacher, dict):
+        return None
+    depth = teacher.get("depth")
+    if not isinstance(depth, dict):
+        return None
+    model = depth.get("model")
+    return str(model) if model is not None else None
+
+
+def _teacher_metadata_path(prepared_root_dir: Path) -> Path:
+    return prepared_root_dir.expanduser() / TEACHER_METADATA_FILENAME
+
+
+def _has_existing_teacher_heatmaps(prepared_root_dir: Path) -> bool:
+    root = prepared_root_dir.expanduser()
+    if not root.exists():
+        return False
+    return any(root.glob("*/teacher_heatmaps/*.npy"))
 
 
 def _prepare_split_dirs(prepared_root_dir: Path, split_name: str) -> dict[str, Path]:

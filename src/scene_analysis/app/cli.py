@@ -595,6 +595,7 @@ def prepare_student_data_command(
         typer.echo(f"val samples: {summary['val_samples']}")
         typer.echo(f"teacher generated: {sum(summary['teacher_heatmaps_generated'].values())}")
         typer.echo(f"teacher skipped existing: {sum(summary['teacher_heatmaps_skipped_existing'].values())}")
+        typer.echo(f"teacher metadata: {summary['teacher_metadata_path']}")
         typer.echo(f"summary: {config.dataset.prepared_root_dir / 'prepare_summary.json'}")
     except Exception as error:
         logger.exception("Student data preparation failed: {}", error)
