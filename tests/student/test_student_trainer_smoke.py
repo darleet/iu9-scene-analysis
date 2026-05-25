@@ -67,3 +67,17 @@ def test_student_trainer_skips_zero_valid_train_batches(train_config) -> None:
     )
 
     assert metrics["train_loss"] > 0.0
+
+
+def test_student_trainer_reuses_visual_preview_indices(train_config) -> None:
+    trainer = StudentTrainer(train_config, "student_s")
+    _, val_loader = trainer._create_dataloaders()
+
+    first_batch = trainer._sample_visual_preview_batch(epoch=1, dataloader=val_loader)
+    first_indices = list(trainer._visual_preview_indices or [])
+    second_batch = trainer._sample_visual_preview_batch(epoch=5, dataloader=val_loader)
+    second_indices = list(trainer._visual_preview_indices or [])
+
+    assert first_indices
+    assert second_indices == first_indices
+    assert list(second_batch["sample_id"]) == list(first_batch["sample_id"])

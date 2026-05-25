@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from loguru import logger
 from torch.amp import GradScaler, autocast
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, default_collate
 
 from scene_analysis.evaluation.metrics import compute_precision_recall_curve_data
 from scene_analysis.evaluation.visualization import plot_precision_recall_curve
@@ -45,6 +45,7 @@ class StudentTrainer:
         self.model: torch.nn.Module | None = None
         self._last_val_scores = np.empty(0, dtype=np.float32)
         self._last_val_labels = np.empty(0, dtype=np.uint8)
+        self._visual_preview_indices: list[int] | None = None
 
     def train(self) -> dict[str, Any]:
         self._set_seed(self.config.experiment.seed)
@@ -387,7 +388,7 @@ class StudentTrainer:
     def save_visual_previews(self, epoch: int, dataloader: DataLoader[dict[str, Any]]) -> Path | None:
         if self.model is None:
             raise RuntimeError("Model is not initialized")
-        batch = next(iter(dataloader))
+        batch = self._sample_visual_preview_batch(epoch, dataloader)
         batch_on_device = self._move_batch(batch)
         with torch.no_grad():
             outputs = self.model(batch_on_device["image"])
@@ -400,6 +401,26 @@ class StudentTrainer:
             self.config.input.normalize_std,
             max_samples=min(self.config.validation.num_visual_examples, 4),
         )
+
+    def _sample_visual_preview_batch(
+        self,
+        epoch: int,
+        dataloader: DataLoader[dict[str, Any]],
+    ) -> dict[str, Any]:
+        dataset = getattr(dataloader, "dataset", None)
+        max_samples = min(self.config.validation.num_visual_examples, 4)
+        if dataset is None or max_samples <= 0:
+            return next(iter(dataloader))
+        dataset_length = len(dataset)
+        if dataset_length <= 0:
+            return next(iter(dataloader))
+
+        sample_count = min(max_samples, dataset_length)
+        if self._visual_preview_indices is None:
+            rng = random.Random(self.config.experiment.seed)
+            self._visual_preview_indices = rng.sample(range(dataset_length), sample_count)
+        indices = self._visual_preview_indices[:sample_count]
+        return default_collate([dataset[index] for index in indices])
 
     def _create_dataloaders(self) -> tuple[DataLoader[dict[str, Any]], DataLoader[dict[str, Any]]]:
         self._build_resized_caches()

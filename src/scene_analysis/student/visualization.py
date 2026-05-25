@@ -23,6 +23,7 @@ def render_training_preview(
 ) -> Path:
     images = _to_numpy_batch(batch["image"])
     obstacle_target = _to_numpy_batch(batch["obstacle_target"])
+    valid_mask = _to_numpy_batch(batch["valid_mask"])
     teacher_heatmap = _to_numpy_batch(batch["teacher_heatmap"])
     student_heatmap = _to_numpy_batch(outputs["final_heatmap"])
     roi_prob = _to_numpy_batch(outputs["roi_prob"])
@@ -32,6 +33,7 @@ def render_training_preview(
     for index in range(sample_count):
         rgb = _unnormalize_image(images[index], normalize_mean, normalize_std)
         obstacle = obstacle_target[index, 0]
+        valid = valid_mask[index, 0]
         teacher = teacher_heatmap[index, 0]
         student = student_heatmap[index, 0]
         roi = roi_prob[index, 0]
@@ -41,6 +43,7 @@ def render_training_preview(
         cells = [
             rgb_bgr,
             _mask_to_bgr(obstacle),
+            _mask_to_bgr(valid),
             heatmap_to_bgr(teacher, colormap=colormap),
             heatmap_to_bgr(student, colormap=colormap),
             heatmap_to_bgr(roi, colormap="turbo"),
@@ -105,7 +108,7 @@ def draw_inference_overlay_text(
     return image
 
 
-_COLUMN_LABELS = ["RGB", "GT", "Teacher", "Student", "ROI", "Overlay"]
+_COLUMN_LABELS = ["RGB", "GT", "Valid", "Teacher", "Student", "ROI Pred", "Overlay"]
 
 
 def _to_numpy_batch(value: object) -> np.ndarray:
