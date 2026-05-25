@@ -82,7 +82,7 @@ scheduler:
 
 training:
   device: "auto"
-  batch_size: 32
+  batch_size: 4
   num_workers: 4
   epochs: 10
   use_amp: true

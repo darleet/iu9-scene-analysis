@@ -154,11 +154,18 @@ class StudentTrainer:
         self.model.train()
         total_loss = 0.0
         step_count = 0
+        skipped_empty_batches = 0
+        skipped_sample_ids: list[str] = []
         max_batches = self.config.training.max_train_batches
 
         for step, batch in enumerate(dataloader, start=1):
             if max_batches is not None and step > max_batches:
                 break
+            if self._is_empty_valid_batch(batch):
+                skipped_empty_batches += 1
+                if len(skipped_sample_ids) < 5:
+                    skipped_sample_ids.extend(self._sample_ids_from_batch(batch)[: 5 - len(skipped_sample_ids)])
+                continue
             batch = self._move_batch(batch)
             optimizer.zero_grad(set_to_none=True)
             with autocast("cuda", enabled=self._amp_enabled):
@@ -183,6 +190,15 @@ class StudentTrainer:
             if step % self.config.training.log_every_n_steps == 0:
                 logger.info("epoch={} step={} train_loss={:.4f}", epoch, step, total_loss / step_count)
 
+        if skipped_empty_batches:
+            logger.warning(
+                "Skipped {} train batch(es) with zero valid pixels at epoch {}; samples={}",
+                skipped_empty_batches,
+                epoch,
+                skipped_sample_ids,
+            )
+        if step_count == 0:
+            raise ValueError("Epoch contains zero train batches with valid pixels; cannot train student model")
         return {"train_loss": total_loss / max(step_count, 1)}
 
     def validate(
@@ -216,12 +232,19 @@ class StudentTrainer:
         all_scores: list[np.ndarray] = []
         all_labels: list[np.ndarray] = []
         step_count = 0
+        skipped_empty_batches = 0
+        skipped_sample_ids: list[str] = []
         max_batches = self.config.training.max_val_batches
 
         with torch.no_grad():
             for step, batch in enumerate(dataloader, start=1):
                 if max_batches is not None and step > max_batches:
                     break
+                if self._is_empty_valid_batch(batch):
+                    skipped_empty_batches += 1
+                    if len(skipped_sample_ids) < 5:
+                        skipped_sample_ids.extend(self._sample_ids_from_batch(batch)[: 5 - len(skipped_sample_ids)])
+                    continue
                 batch = self._move_batch(batch)
                 outputs = self.model(batch["image"])
                 loss, parts = criterion(
@@ -252,6 +275,16 @@ class StudentTrainer:
                     all_scores.append(scores)
                     all_labels.append(labels)
                 step_count += 1
+
+        if skipped_empty_batches:
+            logger.warning(
+                "Skipped {} validation batch(es) with zero valid pixels at epoch {}; samples={}",
+                skipped_empty_batches,
+                epoch,
+                skipped_sample_ids,
+            )
+        if step_count == 0:
+            raise ValueError("Validation contains zero batches with valid pixels; cannot evaluate student model")
 
         averaged = {key: value / max(step_count, 1) for key, value in loss_totals.items()}
         for key in ("heatmap_min", "heatmap_max", "heatmap_mean", "valid_mean", "ignore_mean"):
@@ -437,6 +470,24 @@ class StudentTrainer:
         if not self.config.validation.save_visual_examples or not self.config.outputs.save_visual_previews:
             return False
         return epoch == 1 or epoch % self.config.validation.save_visual_every_n_epochs == 0
+
+    @staticmethod
+    def _is_empty_valid_batch(batch: dict[str, Any]) -> bool:
+        valid_mask = batch.get("valid_mask")
+        if not isinstance(valid_mask, torch.Tensor):
+            return False
+        return float(valid_mask.sum().item()) <= 0.0
+
+    @staticmethod
+    def _sample_ids_from_batch(batch: dict[str, Any]) -> list[str]:
+        sample_ids = batch.get("sample_id")
+        if sample_ids is None:
+            return []
+        if isinstance(sample_ids, str):
+            return [sample_ids]
+        if isinstance(sample_ids, (list, tuple)):
+            return [str(item) for item in sample_ids]
+        return [str(sample_ids)]
 
     def _is_better(self, metrics: dict[str, float]) -> bool:
         metric = self._selection_metric(metrics)
