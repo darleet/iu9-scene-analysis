@@ -138,6 +138,9 @@ class StudentInferenceRunner:
             pretrained_backbone=False,
             decoder_channels=model_payload.get("decoder_channels", [128, 64, 32]),
             dropout=float(model_payload.get("dropout", 0.0)),
+            use_roi_head_in_heatmap=bool(
+                checkpoint.get("use_roi_head_in_heatmap", model_payload.get("use_roi_head_in_heatmap", False))
+            ),
         )
 
     @staticmethod

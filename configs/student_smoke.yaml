@@ -49,18 +49,21 @@ models:
     pretrained_backbone: false
     decoder_channels: [64, 32]
     dropout: 0.1
+    use_roi_head_in_heatmap: true
 
   student_m:
     backbone: "shufflenet_v2_x1_0"
     pretrained_backbone: false
     decoder_channels: [64, 32]
     dropout: 0.1
+    use_roi_head_in_heatmap: true
 
   student_q:
     backbone: "efficientnet_b0"
     pretrained_backbone: false
     decoder_channels: [96, 48]
     dropout: 0.1
+    use_roi_head_in_heatmap: true
 
 loss:
   bce_weight: 1.0

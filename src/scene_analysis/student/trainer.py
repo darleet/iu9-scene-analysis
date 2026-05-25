@@ -315,6 +315,7 @@ class StudentTrainer:
         checkpoint = {
             "student_name": self.student_name,
             "backbone": self.model_config.backbone,
+            "use_roi_head_in_heatmap": self.model_config.use_roi_head_in_heatmap,
             "model_state_dict": self.model.state_dict(),
             "input_height": self.config.input.height,
             "input_width": self.config.input.width,

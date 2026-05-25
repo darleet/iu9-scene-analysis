@@ -39,4 +39,5 @@ def create_student_model(student_name: str, config: StudentModelConfig) -> Stude
         pretrained_backbone=config.pretrained_backbone,
         decoder_channels=config.decoder_channels,
         dropout=config.dropout,
+        use_roi_head_in_heatmap=config.use_roi_head_in_heatmap,
     )

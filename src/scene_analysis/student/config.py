@@ -142,6 +142,7 @@ class StudentModelConfig(StudentBaseConfig):
     pretrained_backbone: bool = True
     decoder_channels: list[int] = Field(default_factory=lambda: [128, 64, 32])
     dropout: float = Field(default=0.1, ge=0.0, lt=1.0)
+    use_roi_head_in_heatmap: bool = False
 
     @field_validator("backbone")
     @classmethod

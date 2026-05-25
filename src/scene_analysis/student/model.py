@@ -36,10 +36,12 @@ class StudentHeatmapNet(nn.Module):
         pretrained_backbone: bool,
         decoder_channels: Sequence[int],
         dropout: float,
+        use_roi_head_in_heatmap: bool = False,
     ) -> None:
         super().__init__()
         self.backbone_name = backbone_name
         self.pretrained_backbone = pretrained_backbone
+        self.use_roi_head_in_heatmap = bool(use_roi_head_in_heatmap)
         self.backbone, backbone_channels = _create_backbone(backbone_name, pretrained_backbone)
 
         channels = [backbone_channels, *[int(item) for item in decoder_channels]]
@@ -65,7 +67,7 @@ class StudentHeatmapNet(nn.Module):
         roi_logits = self.roi_head(x)
         obstacle_prob = torch.sigmoid(obstacle_logits)
         roi_prob = torch.sigmoid(roi_logits)
-        final_heatmap = obstacle_prob
+        final_heatmap = obstacle_prob * roi_prob if self.use_roi_head_in_heatmap else obstacle_prob
         return {
             "obstacle_logits": obstacle_logits,
             "roi_logits": roi_logits,

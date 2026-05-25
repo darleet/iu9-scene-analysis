@@ -23,6 +23,8 @@ def test_student_inference_loads_checkpoint_and_predicts_original_size(
     checkpoint = torch.load(student_checkpoint, map_location="cpu", weights_only=False)
 
     assert checkpoint["student_name"] == "student_s"
+    assert runner.model is not None
+    assert runner.model.use_roi_head_in_heatmap is False
     assert result["heatmap"].shape == (40, 70)
     assert result["overlay"].shape == frame.shape
     assert 0.0 <= float(result["heatmap"].min()) <= 1.0
