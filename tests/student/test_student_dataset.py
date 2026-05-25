@@ -25,7 +25,7 @@ def test_student_dataset_returns_expected_tensors(train_config) -> None:
 
     assert item["image"].shape == (3, 64, 96)
     assert item["obstacle_target"].shape == (1, 64, 96)
-    assert item["roi_target"].shape == (1, 64, 96)
+    assert set(item) == {"image", "obstacle_target", "valid_mask", "ignore_mask", "teacher_heatmap", "sample_id"}
     assert item["valid_mask"].shape == (1, 64, 96)
     assert item["ignore_mask"].shape == (1, 64, 96)
     assert item["teacher_heatmap"].shape == (1, 64, 96)

@@ -100,7 +100,6 @@ class StudentTrainer:
                 "val_ap": last_val_metrics["val_ap"],
                 "loss_bce": last_val_metrics["loss_bce"],
                 "loss_dice": last_val_metrics["loss_dice"],
-                "loss_roi": last_val_metrics["loss_roi"],
                 "loss_distill": last_val_metrics["loss_distill"],
                 "loss_offroad": last_val_metrics["loss_offroad"],
                 "heatmap_mean": last_val_metrics["heatmap_mean"],
@@ -174,7 +173,6 @@ class StudentTrainer:
                 loss, _ = criterion(
                     outputs,
                     batch["obstacle_target"],
-                    batch["roi_target"],
                     batch["valid_mask"],
                     batch["ignore_mask"],
                     batch["teacher_heatmap"],
@@ -216,7 +214,6 @@ class StudentTrainer:
             "val_loss": 0.0,
             "loss_bce": 0.0,
             "loss_dice": 0.0,
-            "loss_roi": 0.0,
             "loss_distill": 0.0,
             "loss_offroad": 0.0,
         }
@@ -251,7 +248,6 @@ class StudentTrainer:
                 loss, parts = criterion(
                     outputs,
                     batch["obstacle_target"],
-                    batch["roi_target"],
                     batch["valid_mask"],
                     batch["ignore_mask"],
                     batch["teacher_heatmap"],
@@ -315,7 +311,6 @@ class StudentTrainer:
         checkpoint = {
             "student_name": self.student_name,
             "backbone": self.model_config.backbone,
-            "use_roi_head_in_heatmap": self.model_config.use_roi_head_in_heatmap,
             "model_state_dict": self.model.state_dict(),
             "input_height": self.config.input.height,
             "input_width": self.config.input.width,
@@ -343,7 +338,6 @@ class StudentTrainer:
                 "val_ap",
                 "loss_bce",
                 "loss_dice",
-                "loss_roi",
                 "loss_distill",
                 "loss_offroad",
                 "heatmap_mean",

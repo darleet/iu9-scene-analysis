@@ -49,10 +49,6 @@ def masked_dice_loss(
     return 1.0 - dice
 
 
-def roi_bce_loss(roi_logits: torch.Tensor, roi_target: torch.Tensor) -> torch.Tensor:
-    return F.binary_cross_entropy_with_logits(roi_logits.float(), roi_target.float())
-
-
 def distillation_mse(
     student_heatmap: torch.Tensor,
     teacher_heatmap: torch.Tensor,
@@ -82,7 +78,6 @@ class StudentHeatmapLoss(nn.Module):
         self,
         outputs: dict[str, torch.Tensor],
         obstacle_target: torch.Tensor,
-        roi_target: torch.Tensor,
         valid_mask: torch.Tensor,
         ignore_mask: torch.Tensor,
         teacher_heatmap: torch.Tensor,
@@ -94,14 +89,12 @@ class StudentHeatmapLoss(nn.Module):
             self.config.positive_class_weight,
         )
         loss_dice = masked_dice_loss(outputs["obstacle_prob"], obstacle_target, valid_mask, self.config.eps)
-        loss_roi = roi_bce_loss(outputs["roi_logits"], roi_target)
         loss_distill = distillation_mse(outputs["final_heatmap"], teacher_heatmap, valid_mask)
         loss_offroad = offroad_loss(outputs["final_heatmap"], ignore_mask)
 
         total = (
             self.config.bce_weight * loss_bce
             + self.config.dice_weight * loss_dice
-            + self.config.roi_bce_weight * loss_roi
             + self.config.distill_mse_weight * loss_distill
             + self.config.offroad_weight * loss_offroad
         )
@@ -110,7 +103,6 @@ class StudentHeatmapLoss(nn.Module):
         return total, {
             "loss_bce": loss_bce.detach(),
             "loss_dice": loss_dice.detach(),
-            "loss_roi": loss_roi.detach(),
             "loss_distill": loss_distill.detach(),
             "loss_offroad": loss_offroad.detach(),
         }

@@ -41,7 +41,6 @@ def test_student_trainer_skips_zero_valid_train_batches(train_config) -> None:
     empty_batch = {
         "image": image,
         "obstacle_target": zero,
-        "roi_target": zero,
         "valid_mask": zero,
         "ignore_mask": one,
         "teacher_heatmap": zero,
@@ -50,7 +49,6 @@ def test_student_trainer_skips_zero_valid_train_batches(train_config) -> None:
     valid_batch = {
         "image": image,
         "obstacle_target": zero.clone(),
-        "roi_target": one,
         "valid_mask": one,
         "ignore_mask": zero,
         "teacher_heatmap": zero,

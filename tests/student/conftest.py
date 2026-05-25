@@ -110,7 +110,6 @@ def make_train_config(tmp_path: Path) -> Callable[[Path], StudentTrainConfig]:
                 "loss": {
                     "bce_weight": 1.0,
                     "dice_weight": 0.5,
-                    "roi_bce_weight": 0.4,
                     "distill_mse_weight": 0.2,
                     "offroad_weight": 0.1,
                     "positive_class_weight": 2.0,

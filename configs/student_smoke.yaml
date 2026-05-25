@@ -49,26 +49,22 @@ models:
     pretrained_backbone: false
     decoder_channels: [64, 32]
     dropout: 0.1
-    use_roi_head_in_heatmap: true
 
   student_m:
     backbone: "shufflenet_v2_x1_0"
     pretrained_backbone: false
     decoder_channels: [64, 32]
     dropout: 0.1
-    use_roi_head_in_heatmap: true
 
   student_q:
     backbone: "efficientnet_b0"
     pretrained_backbone: false
     decoder_channels: [96, 48]
     dropout: 0.1
-    use_roi_head_in_heatmap: true
 
 loss:
   bce_weight: 1.0
   dice_weight: 0.5
-  roi_bce_weight: 0.15
   distill_mse_weight: 0.02
   offroad_weight: 0.02
   positive_class_weight: 35.0

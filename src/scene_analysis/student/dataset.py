@@ -73,15 +73,13 @@ class StudentHeatmapDataset(Dataset[dict[str, Any]]):
 
         teacher_heatmap = np.clip(teacher_heatmap.astype(np.float32), 0.0, 1.0)
         obstacle_target = (mask == self.dataset_config.obstacle_value).astype(np.float32)
-        roi_target = (mask != self.dataset_config.ignore_value).astype(np.float32)
-        valid_mask = roi_target.copy()
+        valid_mask = (mask != self.dataset_config.ignore_value).astype(np.float32)
         ignore_mask = (mask == self.dataset_config.ignore_value).astype(np.float32)
 
         image_tensor = self._normalize_image(image_rgb)
         return {
             "image": image_tensor,
             "obstacle_target": torch.from_numpy(obstacle_target[None, ...]),
-            "roi_target": torch.from_numpy(roi_target[None, ...]),
             "valid_mask": torch.from_numpy(valid_mask[None, ...]),
             "ignore_mask": torch.from_numpy(ignore_mask[None, ...]),
             "teacher_heatmap": torch.from_numpy(teacher_heatmap[None, ...]),

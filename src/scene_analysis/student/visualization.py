@@ -26,7 +26,6 @@ def render_training_preview(
     valid_mask = _to_numpy_batch(batch["valid_mask"])
     teacher_heatmap = _to_numpy_batch(batch["teacher_heatmap"])
     student_heatmap = _to_numpy_batch(outputs["final_heatmap"])
-    roi_prob = _to_numpy_batch(outputs["roi_prob"])
 
     sample_count = min(max_samples, images.shape[0])
     rows: list[np.ndarray] = []
@@ -36,7 +35,6 @@ def render_training_preview(
         valid = valid_mask[index, 0]
         teacher = teacher_heatmap[index, 0]
         student = student_heatmap[index, 0]
-        roi = roi_prob[index, 0]
 
         rgb_bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         overlay = overlay_heatmap_on_image(rgb_bgr, student, alpha=alpha, colormap=colormap)
@@ -46,7 +44,6 @@ def render_training_preview(
             _mask_to_bgr(valid),
             heatmap_to_bgr(teacher, colormap=colormap),
             heatmap_to_bgr(student, colormap=colormap),
-            heatmap_to_bgr(roi, colormap="turbo"),
             overlay,
         ]
         rows.append(np.concatenate([_label_cell(cell, label) for cell, label in zip(cells, _COLUMN_LABELS)], axis=1))
@@ -108,7 +105,7 @@ def draw_inference_overlay_text(
     return image
 
 
-_COLUMN_LABELS = ["RGB", "GT", "Valid", "Teacher", "Student", "ROI Pred", "Overlay"]
+_COLUMN_LABELS = ["RGB", "GT", "Valid", "Teacher", "Student", "Overlay"]
 
 
 def _to_numpy_batch(value: object) -> np.ndarray:

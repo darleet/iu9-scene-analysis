@@ -31,7 +31,6 @@ from scene_analysis.student.trainer import StudentTrainer
 BASE_VALUES: dict[str, float | int] = {
     "loss.bce_weight": 1.0,
     "loss.dice_weight": 1.0,
-    "loss.roi_bce_weight": 0.15,
     "loss.distill_mse_weight": 0.02,
     "loss.offroad_weight": 0.02,
     "loss.positive_class_weight": 6.0,
@@ -41,7 +40,6 @@ BASE_VALUES: dict[str, float | int] = {
 SEARCH_SPACE: list[tuple[str, list[float | int]]] = [
     ("loss.bce_weight", [0.5, 1.0, 1.5]),
     ("loss.dice_weight", [0.5, 1.0, 1.5]),
-    ("loss.roi_bce_weight", [0.0, 0.15, 0.30]),
     ("loss.distill_mse_weight", [0.0, 0.02, 0.05]),
     ("loss.offroad_weight", [0.0, 0.02, 0.05]),
     ("loss.positive_class_weight", [3.0, 6.0, 12.0]),

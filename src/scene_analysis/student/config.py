@@ -142,7 +142,6 @@ class StudentModelConfig(StudentBaseConfig):
     pretrained_backbone: bool = True
     decoder_channels: list[int] = Field(default_factory=lambda: [128, 64, 32])
     dropout: float = Field(default=0.1, ge=0.0, lt=1.0)
-    use_roi_head_in_heatmap: bool = False
 
     @field_validator("backbone")
     @classmethod
@@ -189,7 +188,6 @@ class StudentModelsConfig(StudentBaseConfig):
 class StudentLossConfig(StudentBaseConfig):
     bce_weight: float = Field(default=1.0, ge=0.0)
     dice_weight: float = Field(default=0.5, ge=0.0)
-    roi_bce_weight: float = Field(default=0.4, ge=0.0)
     distill_mse_weight: float = Field(default=0.2, ge=0.0)
     offroad_weight: float = Field(default=0.1, ge=0.0)
     positive_class_weight: float = Field(default=6.0, gt=0.0)
