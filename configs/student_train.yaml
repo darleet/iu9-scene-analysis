@@ -64,11 +64,11 @@ models:
 
 loss:
   bce_weight: 1.0
-  dice_weight: 0.5
+  dice_weight: 1.0
   roi_bce_weight: 0.15
   distill_mse_weight: 0.02
   offroad_weight: 0.02
-  positive_class_weight: 20.0
+  positive_class_weight: 6.0
   eps: 0.000001
 
 optimizer:

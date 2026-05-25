@@ -14,7 +14,7 @@ from scene_analysis.obstacle_map.base import create_obstacle_heatmap_builder
 from scene_analysis.pipeline.mvp_pipeline import MVPSceneAnalysisPipeline
 from scene_analysis.preprocessing.frame_preprocessor import FramePreprocessor
 from scene_analysis.student.artifacts import save_json
-from scene_analysis.student.config import StudentDatasetConfig, StudentTrainConfig
+from scene_analysis.student.config import StudentDatasetConfig, StudentInputConfig, StudentTrainConfig
 from scene_analysis.student.split import RawStudentSample, create_or_load_split, discover_raw_samples
 from scene_analysis.student.visualization import save_heatmap_preview
 from scene_analysis.types import FrameData
@@ -54,17 +54,28 @@ def prepare_student_data(
             copied[split_name] += 1
 
             heatmap_path = split_dirs["teacher_heatmaps"] / f"{sample.sample_id}{config.dataset.teacher_suffix}"
-            if heatmap_path.exists() and not effective_overwrite:
+            heatmap_exists = heatmap_path.exists()
+            expected_shape = _expected_teacher_heatmap_shape(config.input)
+            if heatmap_exists and not effective_overwrite:
+                heatmap_shape = _teacher_heatmap_shape(heatmap_path)
+                if heatmap_shape != expected_shape:
+                    _raise_teacher_heatmap_shape_error(
+                        sample_id=sample.sample_id,
+                        heatmap_path=heatmap_path,
+                        actual_shape=heatmap_shape,
+                        expected_shape=expected_shape,
+                    )
                 skipped_existing[split_name] += 1
             else:
                 if pipeline is None:
-                    pipeline = _build_teacher_pipeline(config.teacher.config_path)
+                    pipeline = _build_teacher_pipeline(config.teacher.config_path, config.input)
                 _generate_teacher_heatmap(
                     pipeline=pipeline,
                     image_path=prepared_image,
                     sample_id=sample.sample_id,
                     output_path=heatmap_path,
                 )
+                _invalidate_resized_cache(config.dataset, config.input, split_name, sample.sample_id)
                 generated[split_name] += 1
 
             if len(preview_paths) < 8 and heatmap_path.exists():
@@ -183,10 +194,17 @@ def _assign_mask_values(
     output_mask[np.isin(source_mask, source_values)] = int(target_value)
 
 
-def _build_teacher_pipeline(config_path: Path) -> MVPSceneAnalysisPipeline:
+def _build_teacher_pipeline(config_path: Path, input_config: StudentInputConfig) -> MVPSceneAnalysisPipeline:
     logger.info("Loading teacher pipeline from {}", config_path)
     teacher_config = load_config(config_path)
     teacher_config.preprocessing.roi.enabled = False
+    teacher_config.preprocessing.resize_width = input_config.width
+    teacher_config.preprocessing.resize_height = input_config.height
+    logger.info(
+        "Teacher preprocessing: roi disabled, resize={}x{}",
+        input_config.width,
+        input_config.height,
+    )
     preprocessor = FramePreprocessor(teacher_config.preprocessing)
     depth_estimator = create_depth_estimator(teacher_config.depth)
     obstacle_builder = create_obstacle_heatmap_builder(teacher_config.obstacle_heatmap)
@@ -221,3 +239,52 @@ def _generate_teacher_heatmap(
     safe_mkdir(output_path.parent)
 
     np.save(output_path, result.obstacle_heatmap.heatmap.astype("float32", copy=False))
+
+
+def _teacher_heatmap_shape(path: Path) -> tuple[int, ...] | None:
+    try:
+        heatmap = np.load(path, mmap_mode="r")
+    except (OSError, ValueError) as exc:
+        logger.warning("Existing teacher heatmap is unreadable and must be regenerated: {} ({})", path, exc)
+        return None
+    shape = tuple(int(dimension) for dimension in heatmap.shape)
+    if len(shape) == 3 and 1 in shape:
+        return tuple(dimension for dimension in shape if dimension != 1)
+    return shape
+
+
+def _expected_teacher_heatmap_shape(input_config: StudentInputConfig) -> tuple[int, int]:
+    return (input_config.height, input_config.width)
+
+
+def _raise_teacher_heatmap_shape_error(
+    *,
+    sample_id: str,
+    heatmap_path: Path,
+    actual_shape: tuple[int, ...] | None,
+    expected_shape: tuple[int, int],
+) -> None:
+    raise ValueError(
+        "Existing teacher heatmap has an incompatible shape. "
+        f"sample='{sample_id}' path='{heatmap_path}' shape={actual_shape} expected={expected_shape}. "
+        "Regenerate teacher heatmaps explicitly with: "
+        "poetry run scene-analysis prepare-student-data --config <student_train.yaml> --overwrite-teacher-heatmaps"
+    )
+
+
+def _invalidate_resized_cache(
+    dataset_config: StudentDatasetConfig,
+    input_config: StudentInputConfig,
+    split_name: str,
+    sample_id: str,
+) -> None:
+    if not dataset_config.use_resized_cache:
+        return
+    cache_path = (
+        dataset_config.prepared_root_dir.expanduser()
+        / split_name
+        / f"cache_{input_config.height}x{input_config.width}"
+        / f"{sample_id}.npz"
+    )
+    if cache_path.exists():
+        cache_path.unlink()

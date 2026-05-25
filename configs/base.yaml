@@ -42,13 +42,13 @@ obstacle_heatmap:
     clip_max_percentile: 98.0
     gamma: 1.0
   roi:
-    enabled: true
+    enabled: false
     top_ignore_ratio: 0.22
     left_ignore_ratio: 0.0
     right_ignore_ratio: 0.0
     bottom_keep_ratio: 1.0
   road_suppression:
-    enabled: true
+    enabled: false
     mode: "row_baseline"
     bottom_strip_ratio: 0.30
     row_smooth_kernel: 11
