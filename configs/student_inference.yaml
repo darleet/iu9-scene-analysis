@@ -1,7 +1,7 @@
 inference:
   device: "auto"
   student: "student_s"
-  checkpoint_path: "data/artifacts/student_runs/student_s/checkpoints/best.pt"
+  checkpoint_path: "data/checkpoints/best_q.pt"
 
 input:
   height: 256
