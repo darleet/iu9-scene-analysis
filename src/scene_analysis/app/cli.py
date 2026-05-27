@@ -589,14 +589,30 @@ def prepare_student_data_command(
             limit=limit,
         )
         typer.echo("STUDENT DATA PREPARATION RESULT")
-        typer.echo(f"raw root: {summary['raw_root_dir']}")
-        typer.echo(f"prepared root: {summary['prepared_root_dir']}")
+        if "datasets" in summary:
+            typer.echo(f"datasets: {summary['dataset_count']}")
+            for dataset_summary in summary["datasets"]:
+                typer.echo(
+                    f"- {dataset_summary['dataset_name']}: "
+                    f"train={dataset_summary['train_samples']} "
+                    f"val={dataset_summary['val_samples']} "
+                    f"prepared={dataset_summary['prepared_root_dir']}"
+                )
+        else:
+            typer.echo(f"raw root: {summary['raw_root_dir']}")
+            typer.echo(f"prepared root: {summary['prepared_root_dir']}")
         typer.echo(f"train samples: {summary['train_samples']}")
         typer.echo(f"val samples: {summary['val_samples']}")
         typer.echo(f"teacher generated: {sum(summary['teacher_heatmaps_generated'].values())}")
         typer.echo(f"teacher skipped existing: {sum(summary['teacher_heatmaps_skipped_existing'].values())}")
-        typer.echo(f"teacher metadata: {summary['teacher_metadata_path']}")
-        typer.echo(f"summary: {config.dataset.prepared_root_dir / 'prepare_summary.json'}")
+        if "datasets" in summary:
+            typer.echo("teacher metadata: multiple")
+            typer.echo("summaries:")
+            for dataset_summary in summary["datasets"]:
+                typer.echo(f"- {dataset_summary['prepared_root_dir']}/prepare_summary.json")
+        else:
+            typer.echo(f"teacher metadata: {summary['teacher_metadata_path']}")
+            typer.echo(f"summary: {summary['prepared_root_dir']}/prepare_summary.json")
     except Exception as error:
         logger.exception("Student data preparation failed: {}", error)
         raise typer.Exit(code=1) from error

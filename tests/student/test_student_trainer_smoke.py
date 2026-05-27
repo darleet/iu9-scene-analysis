@@ -2,12 +2,34 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import cv2
+import numpy as np
 import torch
 from torch.amp import GradScaler
 
 from scene_analysis.student.losses import StudentHeatmapLoss
 from scene_analysis.student.model_registry import create_student_model
 from scene_analysis.student.trainer import StudentTrainer
+
+
+def _write_prepared_sample(root: Path, split: str, sample_id: str) -> None:
+    split_root = root / split
+    images_dir = split_root / "images"
+    masks_dir = split_root / "masks"
+    teacher_dir = split_root / "teacher_heatmaps"
+    images_dir.mkdir(parents=True, exist_ok=True)
+    masks_dir.mkdir(parents=True, exist_ok=True)
+    teacher_dir.mkdir(parents=True, exist_ok=True)
+
+    image = np.zeros((48, 64, 3), dtype=np.uint8)
+    mask = np.zeros((48, 64), dtype=np.uint8)
+    mask[16:28, 24:36] = 1
+    teacher = np.zeros((48, 64), dtype=np.float32)
+    teacher[16:28, 24:36] = 0.9
+
+    cv2.imwrite(str(images_dir / f"{sample_id}.png"), image)
+    cv2.imwrite(str(masks_dir / f"{sample_id}_labels_semantic.png"), mask)
+    np.save(teacher_dir / f"{sample_id}.npy", teacher)
 
 
 def test_student_trainer_smoke_saves_artifacts(train_config) -> None:
@@ -79,3 +101,42 @@ def test_student_trainer_reuses_visual_preview_indices(train_config) -> None:
     assert first_indices
     assert second_indices == first_indices
     assert list(second_batch["sample_id"]) == list(first_batch["sample_id"])
+
+
+def test_student_trainer_samples_up_to_eight_visual_preview_examples(tmp_path: Path, make_train_config) -> None:
+    root = tmp_path / "prepared"
+    for split in ("train", "val"):
+        for index in range(10):
+            _write_prepared_sample(root, split, f"{split}_{index}")
+
+    config = make_train_config(root)
+    config.validation.num_visual_examples = 12
+    trainer = StudentTrainer(config, "student_s")
+    _, val_loader = trainer._create_dataloaders()
+
+    batch = trainer._sample_visual_preview_batch(epoch=1, dataloader=val_loader)
+
+    assert len(trainer._visual_preview_indices or []) == 8
+    assert len(batch["sample_id"]) == 8
+
+
+def test_student_trainer_loads_multiple_prepared_datasets(tmp_path: Path, make_train_config) -> None:
+    first_root = tmp_path / "prepared_a"
+    second_root = tmp_path / "prepared_b"
+    for root, prefix in ((first_root, "a"), (second_root, "b")):
+        for split in ("train", "val"):
+            for index in range(2):
+                _write_prepared_sample(root, split, f"{prefix}_{split}_{index}")
+
+    config = make_train_config(tmp_path / "unused")
+    assert config.dataset is not None
+    first_dataset = config.dataset.model_copy(update={"name": "first", "prepared_root_dir": first_root})
+    second_dataset = config.dataset.model_copy(update={"name": "second", "prepared_root_dir": second_root})
+    config.dataset = first_dataset
+    config.datasets = [first_dataset, second_dataset]
+
+    trainer = StudentTrainer(config, "student_s")
+    train_loader, val_loader = trainer._create_dataloaders()
+
+    assert len(train_loader.dataset) == 4
+    assert len(val_loader.dataset) == 4

@@ -36,7 +36,12 @@ def discover_raw_samples(config: StudentDatasetConfig, limit: int | None = None)
         )
 
     mask_index = _build_mask_index(masks_dir, config.mask_suffix)
-    image_paths = sorted(path for path in images_dir.rglob(f"*{config.image_suffix}") if path.is_file())
+    configured_raw_splits = _configured_raw_split_names(config.raw_train_splits, config.raw_val_splits)
+    image_paths = sorted(
+        path
+        for path in images_dir.rglob(f"*{config.image_suffix}")
+        if path.is_file() and _should_include_raw_image(images_dir, path, configured_raw_splits)
+    )
     samples: list[RawStudentSample] = []
     for image_path in image_paths:
         sample_id = _sample_id_from_filename(image_path.name, config.image_suffix)
@@ -128,6 +133,24 @@ def create_or_load_split(
 
 def _resolve_under_root(root: Path, path: Path) -> Path:
     return path if path.is_absolute() else root / path
+
+
+def _configured_raw_split_names(
+    train_split_names: list[str] | None,
+    val_split_names: list[str] | None,
+) -> set[str]:
+    names: set[str] = set()
+    for split_names in (train_split_names, val_split_names):
+        if split_names:
+            names.update(item.lower() for item in split_names)
+    return names
+
+
+def _should_include_raw_image(images_dir: Path, image_path: Path, configured_splits: set[str]) -> bool:
+    if not configured_splits:
+        return True
+    raw_split = _infer_raw_split(images_dir, image_path)
+    return raw_split is None or raw_split in configured_splits
 
 
 def _infer_raw_split(images_dir: Path, image_path: Path) -> str | None:

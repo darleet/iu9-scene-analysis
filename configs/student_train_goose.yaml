@@ -1,0 +1,171 @@
+experiment:
+  name: "student_goose_heatmap_distillation"
+  seed: 1667
+
+dataset:
+  raw_root_dir: "data/datasets/goose_raw"
+  prepared_root_dir: "data/datasets/goose_prepared"
+  images_dir: "."
+  masks_dir: "."
+  image_suffix: "_windshield_vis.png"
+  mask_suffix: "_labelids.png"
+  teacher_suffix: ".npy"
+  train_ratio: 0.8
+  split_seed: 1667
+  # GOOSE is stored as train/images/train/... and test/images/val/...
+  raw_train_splits: ["train"]
+  raw_val_splits: ["test", "val"]
+  obstacle_value: 1
+  background_value: 0
+  ignore_value: 255
+  mask_obstacle_values:
+    - 1   # traffic_cone
+    - 4   # obstacle
+    - 6   # street_light
+    - 10  # road_block
+    - 12  # car
+    - 13  # bicycle
+    - 14  # person
+    - 15  # bus
+    - 19  # traffic_light
+    - 20  # motorcycle
+    - 25  # boom_barrier
+    - 28  # tree_trunk
+    - 29  # debris
+    - 32  # rider
+    - 33  # animal
+    - 34  # truck
+    - 35  # on_rails
+    - 36  # caravan
+    - 37  # trailer
+    - 39  # wall
+    - 40  # rock
+    - 41  # fence
+    - 42  # guard_rail
+    - 45  # pole
+    - 46  # traffic_sign
+    - 47  # misc_sign
+    - 48  # barrier_tape
+    - 49  # kick_scooter
+    - 54  # water
+    - 57  # heavy_machinery
+    - 58  # container
+    - 60  # barrel
+    - 61  # pipe
+    - 62  # tree_root
+    - 63  # military_vehicle
+  mask_background_values:
+    - 2   # snow
+    - 3   # cobble
+    - 5   # leaves
+    - 7   # bikeway
+    - 9   # pedestrian_crossing
+    - 11  # road_marking
+    - 18  # moss
+    - 21  # sidewalk
+    - 22  # curb
+    - 23  # asphalt
+    - 24  # gravel
+    - 26  # rail_track
+    - 30  # crops
+    - 31  # soil
+    - 50  # low_grass
+    - 51  # high_grass
+  mask_ignore_values:
+    - 0   # undefined
+    - 8   # ego_vehicle
+    - 16  # forest
+    - 17  # bush
+    - 27  # tree_crown
+    - 38  # building
+    - 43  # bridge
+    - 44  # tunnel
+    - 52  # scenery_vegetation
+    - 53  # sky
+    - 55  # wire
+    - 56  # outlier
+    - 59  # hedge
+  mask_unmapped_value: 255
+  use_resized_cache: true
+  overwrite_resized_cache: false
+
+teacher:
+  config_path: "configs/teacher_depth_anything_large.yaml"
+  overwrite_teacher_heatmaps: false
+
+input:
+  height: 256
+  width: 512
+  normalize_mean: [0.485, 0.456, 0.406]
+  normalize_std: [0.229, 0.224, 0.225]
+
+augmentations:
+  enabled: true
+  horizontal_flip_p: 0.5
+  brightness_contrast_p: 0.3
+  blur_p: 0.1
+  noise_p: 0.1
+
+models:
+  train_students: ["student_s", "student_m", "student_q"]
+
+  student_s:
+    backbone: "mobilenet_v3_small"
+    pretrained_backbone: true
+    decoder_channels: [128, 64, 32]
+    dropout: 0.1
+
+  student_m:
+    backbone: "shufflenet_v2_x1_0"
+    pretrained_backbone: true
+    decoder_channels: [128, 64, 32]
+    dropout: 0.1
+
+  student_q:
+    backbone: "efficientnet_b0"
+    pretrained_backbone: true
+    decoder_channels: [160, 96, 48]
+    dropout: 0.1
+
+loss:
+  bce_weight: 1.5
+  dice_weight: 3.0
+  distill_mse_weight: 0.5
+  offroad_weight: 2.0
+  positive_class_weight: 6.0
+  eps: 0.000001
+
+optimizer:
+  name: "adamw"
+  lr: 0.0003
+  weight_decay: 0.0001
+
+scheduler:
+  name: "cosine"
+  min_lr: 0.000001
+
+training:
+  device: "auto"
+  batch_size: 4
+  num_workers: 4
+  epochs: 50
+  use_amp: true
+  grad_clip_norm: 1.0
+  log_every_n_steps: 20
+  save_every_n_epochs: 5
+
+validation:
+  compute_average_precision: true
+  save_best_by: "val_ap"
+  threshold_preview: 0.5
+  save_visual_examples: true
+  num_visual_examples: 12
+  save_visual_every_n_epochs: 5
+
+outputs:
+  root_dir: "data/artifacts/student_runs"
+  save_checkpoints: true
+  save_history_csv: true
+  save_summary_json: true
+  save_pr_curve_png: true
+  save_visual_previews: true

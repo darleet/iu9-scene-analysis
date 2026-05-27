@@ -162,6 +162,35 @@ def test_create_split_uses_cityscapes_train_and_test_dirs(tmp_path: Path, make_t
     assert val_ids == ["test_000", "test_001"]
 
 
+def test_discover_raw_samples_skips_unconfigured_raw_splits(tmp_path: Path, make_train_config) -> None:
+    raw_root = tmp_path / "bdd100k"
+    for split_name in ("train", "val", "test"):
+        image_dir = raw_root / split_name / "img"
+        image_dir.mkdir(parents=True)
+        sample_id = f"{split_name}_001"
+        cv2.imwrite(str(image_dir / f"{sample_id}.jpg"), np.zeros((8, 8, 3), dtype=np.uint8))
+
+    for split_name in ("train", "val"):
+        mask_dir = raw_root / "labels" / "sem_seg" / "masks" / split_name
+        mask_dir.mkdir(parents=True)
+        sample_id = f"{split_name}_001"
+        cv2.imwrite(str(mask_dir / f"{sample_id}.png"), np.zeros((8, 8), dtype=np.uint8))
+
+    config = make_train_config(tmp_path / "prepared")
+    config.dataset.raw_root_dir = raw_root
+    config.dataset.images_dir = Path(".")
+    config.dataset.masks_dir = Path("labels/sem_seg/masks")
+    config.dataset.image_suffix = ".jpg"
+    config.dataset.mask_suffix = ".png"
+    config.dataset.raw_train_splits = ["train"]
+    config.dataset.raw_val_splits = ["val"]
+
+    samples = discover_raw_samples(config.dataset)
+
+    assert [sample.sample_id for sample in samples] == ["train_001", "val_001"]
+    assert [sample.raw_split for sample in samples] == ["train", "val"]
+
+
 def test_copy_sample_can_remap_source_mask_values(tmp_path: Path, make_train_config) -> None:
     raw_root = tmp_path / "raw"
     raw_root.mkdir()

@@ -9,12 +9,12 @@ import numpy as np
 import torch
 from loguru import logger
 from torch.amp import GradScaler, autocast
-from torch.utils.data import DataLoader, default_collate
+from torch.utils.data import ConcatDataset, DataLoader, Dataset, default_collate
 
 from scene_analysis.evaluation.metrics import compute_precision_recall_curve_data
 from scene_analysis.evaluation.visualization import plot_precision_recall_curve
 from scene_analysis.student.artifacts import save_csv, save_json, save_yaml
-from scene_analysis.student.config import StudentTrainConfig
+from scene_analysis.student.config import StudentDatasetConfig, StudentTrainConfig
 from scene_analysis.student.dataset import StudentHeatmapDataset, build_resized_student_cache
 from scene_analysis.student.losses import StudentHeatmapLoss
 from scene_analysis.student.metrics import (
@@ -28,6 +28,8 @@ from scene_analysis.student.model import count_parameters
 from scene_analysis.student.model_registry import STUDENT_REGISTRY, create_student_model, validate_student_name
 from scene_analysis.student.visualization import render_training_preview
 from scene_analysis.utils import safe_mkdir, to_serializable
+
+MAX_VISUAL_PREVIEW_SAMPLES = 8
 
 
 class StudentTrainer:
@@ -399,6 +401,13 @@ class StudentTrainer:
             "epochs": self.config.training.epochs,
             "train_samples": train_samples,
             "val_samples": val_samples,
+            "datasets": [
+                {
+                    "name": _dataset_display_name(dataset_config),
+                    "prepared_root_dir": str(dataset_config.prepared_root_dir),
+                }
+                for dataset_config in self.config.dataset_configs()
+            ],
             "best_epoch": self.best_epoch,
             "best_val_ap": self.best_val_ap,
             "last_train_loss": last_train_metrics.get("train_loss"),
@@ -434,7 +443,7 @@ class StudentTrainer:
             output_path,
             self.config.input.normalize_mean,
             self.config.input.normalize_std,
-            max_samples=min(self.config.validation.num_visual_examples, 4),
+            max_samples=min(self.config.validation.num_visual_examples, MAX_VISUAL_PREVIEW_SAMPLES),
         )
 
     def _sample_visual_preview_batch(
@@ -443,7 +452,7 @@ class StudentTrainer:
         dataloader: DataLoader[dict[str, Any]],
     ) -> dict[str, Any]:
         dataset = getattr(dataloader, "dataset", None)
-        max_samples = min(self.config.validation.num_visual_examples, 4)
+        max_samples = min(self.config.validation.num_visual_examples, MAX_VISUAL_PREVIEW_SAMPLES)
         if dataset is None or max_samples <= 0:
             return next(iter(dataloader))
         dataset_length = len(dataset)
@@ -459,22 +468,8 @@ class StudentTrainer:
 
     def _create_dataloaders(self) -> tuple[DataLoader[dict[str, Any]], DataLoader[dict[str, Any]]]:
         self._build_resized_caches()
-        train_dataset = StudentHeatmapDataset(
-            self.config.dataset.prepared_root_dir,
-            "train",
-            self.config.dataset,
-            self.config.input,
-            self.config.augmentations,
-            training=True,
-        )
-        val_dataset = StudentHeatmapDataset(
-            self.config.dataset.prepared_root_dir,
-            "val",
-            self.config.dataset,
-            self.config.input,
-            self.config.augmentations,
-            training=False,
-        )
+        train_dataset = self._create_dataset("train", training=True)
+        val_dataset = self._create_dataset("val", training=False)
         generator = torch.Generator()
         generator.manual_seed(self.config.experiment.seed)
         loader_options: dict[str, Any] = {
@@ -498,29 +493,59 @@ class StudentTrainer:
         )
         return train_loader, val_loader
 
+    def _create_dataset(self, split: str, *, training: bool) -> Dataset[dict[str, Any]]:
+        datasets: list[StudentHeatmapDataset] = []
+        for dataset_config in self.config.dataset_configs():
+            dataset = StudentHeatmapDataset(
+                dataset_config.prepared_root_dir,
+                split,
+                dataset_config,
+                self.config.input,
+                self.config.augmentations,
+                training=training,
+            )
+            datasets.append(dataset)
+            logger.info(
+                "Loaded student dataset source={} split={} samples={} root={}",
+                _dataset_display_name(dataset_config),
+                split,
+                len(dataset),
+                dataset_config.prepared_root_dir,
+            )
+        if len(datasets) == 1:
+            return datasets[0]
+        return ConcatDataset(datasets)
+
     def _build_resized_caches(self) -> None:
-        if not self.config.dataset.use_resized_cache:
+        dataset_configs = [
+            dataset_config
+            for dataset_config in self.config.dataset_configs()
+            if dataset_config.use_resized_cache
+        ]
+        if not dataset_configs:
             return
         logger.info(
             "Preparing resized student cache at {}x{}",
             self.config.input.height,
             self.config.input.width,
         )
-        for split in ("train", "val"):
-            summary = build_resized_student_cache(
-                self.config.dataset.prepared_root_dir,
-                split,
-                self.config.dataset,
-                self.config.input,
-            )
-            logger.info(
-                "Resized cache split={} total={} created={} skipped={} dir={}",
-                summary["split"],
-                summary["total"],
-                summary["created"],
-                summary["skipped"],
-                summary["cache_dir"],
-            )
+        for dataset_config in dataset_configs:
+            for split in ("train", "val"):
+                summary = build_resized_student_cache(
+                    dataset_config.prepared_root_dir,
+                    split,
+                    dataset_config,
+                    self.config.input,
+                )
+                logger.info(
+                    "Resized cache source={} split={} total={} created={} skipped={} dir={}",
+                    _dataset_display_name(dataset_config),
+                    summary["split"],
+                    summary["total"],
+                    summary["created"],
+                    summary["skipped"],
+                    summary["cache_dir"],
+                )
 
     def _should_save_visual_previews(self, epoch: int) -> bool:
         if not self.config.validation.save_visual_examples or not self.config.outputs.save_visual_previews:
@@ -617,3 +642,7 @@ class StudentTrainer:
 
 def _format_float(value: float) -> str:
     return "n/a" if math.isnan(float(value)) else f"{float(value):.4f}"
+
+
+def _dataset_display_name(dataset_config: StudentDatasetConfig) -> str:
+    return dataset_config.name or dataset_config.prepared_root_dir.expanduser().name

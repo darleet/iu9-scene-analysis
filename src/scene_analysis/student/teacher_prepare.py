@@ -31,7 +31,35 @@ def prepare_student_data(
     overwrite_teacher_heatmaps: bool = False,
     limit: int | None = None,
 ) -> dict[str, Any]:
+    dataset_configs = config.dataset_configs()
+    if len(dataset_configs) == 1:
+        return _prepare_single_student_data(
+            _config_for_dataset(config, dataset_configs[0]),
+            overwrite_teacher_heatmaps=overwrite_teacher_heatmaps,
+            limit=limit,
+        )
+
+    summaries: list[dict[str, Any]] = []
+    for dataset_config in dataset_configs:
+        summaries.append(
+            _prepare_single_student_data(
+                _config_for_dataset(config, dataset_config),
+                overwrite_teacher_heatmaps=overwrite_teacher_heatmaps,
+                limit=limit,
+            )
+        )
+    return _combine_prepare_summaries(summaries, limit=limit)
+
+
+def _prepare_single_student_data(
+    config: StudentTrainConfig,
+    *,
+    overwrite_teacher_heatmaps: bool = False,
+    limit: int | None = None,
+) -> dict[str, Any]:
     """Подготовка train/val выборок и тепловой карты учиеля"""
+    if config.dataset is None:
+        raise ValueError("Student dataset is not configured")
     effective_overwrite = overwrite_teacher_heatmaps or config.teacher.overwrite_teacher_heatmaps
     teacher_metadata = _build_teacher_metadata(config)
     if not effective_overwrite:
@@ -96,6 +124,7 @@ def prepare_student_data(
 
     summary = {
         "status": "ok",
+        "dataset_name": _dataset_display_name(config.dataset),
         "raw_root_dir": str(config.dataset.raw_root_dir),
         "prepared_root_dir": str(config.dataset.prepared_root_dir),
         "teacher_metadata_path": str(_teacher_metadata_path(config.dataset.prepared_root_dir)),
@@ -119,6 +148,50 @@ def prepare_student_data(
         sum(skipped_existing.values()),
     )
     return summary
+
+
+def _config_for_dataset(config: StudentTrainConfig, dataset_config: StudentDatasetConfig) -> StudentTrainConfig:
+    single_config = config.model_copy(deep=True)
+    object.__setattr__(single_config, "dataset", dataset_config.model_copy(deep=True))
+    object.__setattr__(single_config, "datasets", [])
+    return single_config
+
+
+def _combine_prepare_summaries(summaries: list[dict[str, Any]], *, limit: int | None) -> dict[str, Any]:
+    copied = {"train": 0, "val": 0}
+    generated = {"train": 0, "val": 0}
+    skipped_existing = {"train": 0, "val": 0}
+    for summary in summaries:
+        for split_name in ("train", "val"):
+            copied[split_name] += int(summary["copied"].get(split_name, 0))
+            generated[split_name] += int(summary["teacher_heatmaps_generated"].get(split_name, 0))
+            skipped_existing[split_name] += int(summary["teacher_heatmaps_skipped_existing"].get(split_name, 0))
+
+    return {
+        "status": "ok",
+        "dataset_name": "multiple",
+        "datasets": summaries,
+        "dataset_count": len(summaries),
+        "raw_root_dir": "multiple",
+        "prepared_root_dir": "multiple",
+        "prepared_root_dirs": [summary["prepared_root_dir"] for summary in summaries],
+        "teacher_metadata_path": "multiple",
+        "teacher_metadata_paths": [summary["teacher_metadata_path"] for summary in summaries],
+        "train_samples": sum(int(summary["train_samples"]) for summary in summaries),
+        "val_samples": sum(int(summary["val_samples"]) for summary in summaries),
+        "copied": copied,
+        "teacher_heatmaps_generated": generated,
+        "teacher_heatmaps_skipped_existing": skipped_existing,
+        "overwrite_teacher_heatmaps": any(bool(summary["overwrite_teacher_heatmaps"]) for summary in summaries),
+        "limit": limit,
+        "preview_paths": [path for summary in summaries for path in summary.get("preview_paths", [])],
+        "split_train": "multiple",
+        "split_val": "multiple",
+    }
+
+
+def _dataset_display_name(dataset_config: StudentDatasetConfig) -> str:
+    return dataset_config.name or dataset_config.prepared_root_dir.expanduser().name
 
 
 def _build_teacher_metadata(config: StudentTrainConfig) -> dict[str, Any]:

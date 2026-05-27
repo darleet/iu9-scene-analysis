@@ -17,7 +17,7 @@ def render_training_preview(
     normalize_mean: list[float],
     normalize_std: list[float],
     *,
-    max_samples: int = 4,
+    max_samples: int = 8,
     alpha: float = 0.45,
     colormap: str = "inferno",
 ) -> Path:

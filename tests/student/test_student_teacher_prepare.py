@@ -38,6 +38,53 @@ def test_build_teacher_pipeline_uses_student_input_geometry(
     assert preprocessing.resize_height == config.input.height
 
 
+def test_prepare_student_data_dispatches_multiple_dataset_configs(
+    tmp_path: Path,
+    make_train_config,
+    monkeypatch,
+) -> None:
+    config = make_train_config(tmp_path / "prepared")
+    assert config.dataset is not None
+    first_dataset = config.dataset.model_copy(
+        update={"name": "first", "prepared_root_dir": tmp_path / "prepared_first"}
+    )
+    second_dataset = config.dataset.model_copy(
+        update={"name": "second", "prepared_root_dir": tmp_path / "prepared_second"}
+    )
+    config.dataset = first_dataset
+    config.datasets = [first_dataset, second_dataset]
+    seen_names: list[str] = []
+
+    def fake_prepare(single_config, *, overwrite_teacher_heatmaps: bool, limit: int | None):
+        seen_names.append(single_config.dataset.name)
+        return {
+            "status": "ok",
+            "dataset_name": single_config.dataset.name,
+            "raw_root_dir": str(single_config.dataset.raw_root_dir),
+            "prepared_root_dir": str(single_config.dataset.prepared_root_dir),
+            "teacher_metadata_path": str(single_config.dataset.prepared_root_dir / "teacher_metadata.json"),
+            "train_samples": 2,
+            "val_samples": 1,
+            "copied": {"train": 2, "val": 1},
+            "teacher_heatmaps_generated": {"train": 0, "val": 0},
+            "teacher_heatmaps_skipped_existing": {"train": 2, "val": 1},
+            "overwrite_teacher_heatmaps": overwrite_teacher_heatmaps,
+            "limit": limit,
+            "preview_paths": [],
+            "split_train": str(single_config.dataset.prepared_root_dir / "split" / "train.txt"),
+            "split_val": str(single_config.dataset.prepared_root_dir / "split" / "val.txt"),
+        }
+
+    monkeypatch.setattr(teacher_prepare, "_prepare_single_student_data", fake_prepare)
+
+    summary = teacher_prepare.prepare_student_data(config, overwrite_teacher_heatmaps=True, limit=5)
+
+    assert seen_names == ["first", "second"]
+    assert summary["dataset_count"] == 2
+    assert summary["train_samples"] == 4
+    assert summary["val_samples"] == 2
+
+
 def test_teacher_heatmap_shape_squeezes_singleton_channel(tmp_path: Path) -> None:
     heatmap_path = tmp_path / "teacher.npy"
     np.save(heatmap_path, np.zeros((1, 64, 96), dtype=np.float32))

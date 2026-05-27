@@ -1,26 +1,56 @@
 experiment:
-  name: "student_heatmap_distillation"
+  name: "student_bdd100k_heatmap_distillation"
   seed: 1667
 
 dataset:
-  raw_root_dir: "data/datasets/lost_and_found_raw"
-  prepared_root_dir: "data/datasets/lost_and_found_prepared"
+  raw_root_dir: "data/datasets/bdd100k_raw"
+  prepared_root_dir: "data/datasets/bdd100k_prepared"
+  # Local BDD100K layout:
+  #   train/img/*.jpg
+  #   val/img/*.jpg
+  #   labels/sem_seg/masks/train/*.png
+  #   labels/sem_seg/masks/val/*.png
   images_dir: "."
-  masks_dir: "."
-  image_suffix: "_leftImg8bit.png"
-  mask_suffix: "_gtCoarse_labelIds.png"
+  masks_dir: "labels/sem_seg/masks"
+  image_suffix: ".jpg"
+  mask_suffix: ".png"
   teacher_suffix: ".npy"
-  train_ratio: 0.8
+  train_ratio: 0.85
   split_seed: 1667
   raw_train_splits: ["train"]
-  raw_val_splits: ["val", "test"]
+  raw_val_splits: ["val"]
   obstacle_value: 1
   background_value: 0
   ignore_value: 255
-  mask_obstacle_values: []
-  mask_background_values: [1]
-  mask_ignore_values: [0, 255]
-  mask_unmapped_value: 1
+  # BDD100K semantic labels:
+  # 0 road, 1 sidewalk, 2 building, 3 wall, 4 fence, 5 pole,
+  # 6 traffic light, 7 traffic sign, 8 vegetation, 9 terrain, 10 sky,
+  # 11 person, 12 rider, 13 car, 14 truck, 15 bus, 16 train,
+  # 17 motorcycle, 18 bicycle, 255 unknown
+  mask_obstacle_values:
+    - 3   # wall
+    - 4   # fence
+    - 5   # pole
+    - 6   # traffic light
+    - 7   # traffic sign
+    - 11  # person
+    - 12  # rider
+    - 13  # car
+    - 14  # truck
+    - 15  # bus
+    - 16  # train
+    - 17  # motorcycle
+    - 18  # bicycle
+  mask_background_values:
+    - 0   # road
+  mask_ignore_values:
+    - 1   # sidewalk
+    - 2   # building
+    - 8   # vegetation
+    - 9   # terrain
+    - 10  # sky
+    - 255 # unknown
+  mask_unmapped_value: 255
   use_resized_cache: true
   overwrite_resized_cache: false
 
@@ -65,9 +95,9 @@ models:
 loss:
   bce_weight: 1.5
   dice_weight: 3.0
-  distill_mse_weight: 1.0
+  distill_mse_weight: 0.5
   offroad_weight: 2.0
-  positive_class_weight: 16.0
+  positive_class_weight: 6.0
   eps: 0.000001
 
 optimizer:
@@ -83,7 +113,7 @@ training:
   device: "auto"
   batch_size: 4
   num_workers: 4
-  epochs: 20
+  epochs: 50
   use_amp: true
   grad_clip_norm: 1.0
   log_every_n_steps: 20

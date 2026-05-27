@@ -1,0 +1,193 @@
+experiment:
+  name: "student_all_datasets_heatmap_distillation"
+  seed: 1667
+
+datasets:
+  - name: "goose"
+    raw_root_dir: "data/datasets/goose_raw"
+    prepared_root_dir: "data/datasets/goose_prepared"
+    images_dir: "."
+    masks_dir: "."
+    image_suffix: "_windshield_vis.png"
+    mask_suffix: "_labelids.png"
+    teacher_suffix: ".npy"
+    train_ratio: 0.8
+    split_seed: 1667
+    raw_train_splits: ["train"]
+    raw_val_splits: ["test", "val"]
+    obstacle_value: 1
+    background_value: 0
+    ignore_value: 255
+    mask_obstacle_values:
+      - 1
+      - 4
+      - 6
+      - 10
+      - 12
+      - 13
+      - 14
+      - 15
+      - 19
+      - 20
+      - 25
+      - 28
+      - 29
+      - 32
+      - 33
+      - 34
+      - 35
+      - 36
+      - 37
+      - 39
+      - 40
+      - 41
+      - 42
+      - 45
+      - 46
+      - 47
+      - 48
+      - 49
+      - 54
+      - 57
+      - 58
+      - 60
+      - 61
+      - 62
+      - 63
+    mask_background_values:
+      - 2
+      - 3
+      - 5
+      - 7
+      - 9
+      - 11
+      - 18
+      - 21
+      - 22
+      - 23
+      - 24
+      - 26
+      - 30
+      - 31
+      - 50
+      - 51
+    mask_ignore_values:
+      - 0
+      - 8
+      - 16
+      - 17
+      - 27
+      - 38
+      - 43
+      - 44
+      - 52
+      - 53
+      - 55
+      - 56
+      - 59
+    mask_unmapped_value: 255
+    use_resized_cache: true
+    overwrite_resized_cache: false
+
+  - name: "bdd100k"
+    raw_root_dir: "data/datasets/bdd100k_raw"
+    prepared_root_dir: "data/datasets/bdd100k_prepared"
+    images_dir: "."
+    masks_dir: "labels/sem_seg/masks"
+    image_suffix: ".jpg"
+    mask_suffix: ".png"
+    teacher_suffix: ".npy"
+    train_ratio: 0.85
+    split_seed: 1667
+    raw_train_splits: ["train"]
+    raw_val_splits: ["val"]
+    obstacle_value: 1
+    background_value: 0
+    ignore_value: 255
+    mask_obstacle_values: [3, 4, 5, 6, 7, 11, 12, 13, 14, 15, 16, 17, 18]
+    mask_background_values: [0]
+    mask_ignore_values: [1, 2, 8, 9, 10, 255]
+    mask_unmapped_value: 255
+    use_resized_cache: true
+    overwrite_resized_cache: false
+
+teacher:
+  config_path: "configs/teacher_depth_anything_large.yaml"
+  overwrite_teacher_heatmaps: false
+
+input:
+  height: 256
+  width: 512
+  normalize_mean: [0.485, 0.456, 0.406]
+  normalize_std: [0.229, 0.224, 0.225]
+
+augmentations:
+  enabled: true
+  horizontal_flip_p: 0.5
+  brightness_contrast_p: 0.3
+  blur_p: 0.1
+  noise_p: 0.1
+
+models:
+  train_students: ["student_s", "student_m", "student_q"]
+
+  student_s:
+    backbone: "mobilenet_v3_small"
+    pretrained_backbone: true
+    decoder_channels: [128, 64, 32]
+    dropout: 0.1
+
+  student_m:
+    backbone: "shufflenet_v2_x1_0"
+    pretrained_backbone: true
+    decoder_channels: [128, 64, 32]
+    dropout: 0.1
+
+  student_q:
+    backbone: "efficientnet_b0"
+    pretrained_backbone: true
+    decoder_channels: [160, 96, 48]
+    dropout: 0.1
+
+loss:
+  bce_weight: 1.5
+  dice_weight: 3.0
+  distill_mse_weight: 0.5
+  offroad_weight: 2.0
+  positive_class_weight: 6.0
+  eps: 0.000001
+
+optimizer:
+  name: "adamw"
+  lr: 0.0003
+  weight_decay: 0.0001
+
+scheduler:
+  name: "cosine"
+  min_lr: 0.000001
+
+training:
+  device: "auto"
+  batch_size: 4
+  num_workers: 4
+  epochs: 20
+  use_amp: true
+  grad_clip_norm: 1.0
+  log_every_n_steps: 20
+  save_every_n_epochs: 5
+
+validation:
+  compute_average_precision: true
+  save_best_by: "val_ap"
+  threshold_preview: 0.5
+  save_visual_examples: true
+  num_visual_examples: 12
+  save_visual_every_n_epochs: 5
+
+outputs:
+  root_dir: "data/artifacts/student_runs"
+  save_checkpoints: true
+  save_history_csv: true
+  save_summary_json: true
+  save_pr_curve_png: true
+  save_visual_previews: true

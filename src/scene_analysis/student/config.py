@@ -52,6 +52,7 @@ class StudentExperimentConfig(StudentBaseConfig):
 
 
 class StudentDatasetConfig(StudentBaseConfig):
+    name: str | None = None
     raw_root_dir: Path = Path("data/datasets/lost_and_found_raw")
     prepared_root_dir: Path = Path("data/datasets/lost_and_found_prepared")
     images_dir: Path = Path(".")
@@ -72,6 +73,14 @@ class StudentDatasetConfig(StudentBaseConfig):
     mask_unmapped_value: int | None = 1
     use_resized_cache: bool = True
     overwrite_resized_cache: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
     @field_validator("raw_root_dir", "prepared_root_dir", "images_dir", "masks_dir", mode="before")
     @classmethod
@@ -274,7 +283,8 @@ class StudentOutputConfig(StudentBaseConfig):
 
 class StudentTrainConfig(StudentBaseConfig):
     experiment: StudentExperimentConfig
-    dataset: StudentDatasetConfig
+    dataset: StudentDatasetConfig | None = None
+    datasets: list[StudentDatasetConfig] = Field(default_factory=list)
     teacher: StudentTeacherConfig
     input: StudentInputConfig
     augmentations: StudentAugmentationConfig
@@ -285,6 +295,21 @@ class StudentTrainConfig(StudentBaseConfig):
     training: StudentTrainingRuntimeConfig
     validation: StudentValidationConfig
     outputs: StudentOutputConfig
+
+    @model_validator(mode="after")
+    def validate_dataset_sources(self) -> StudentTrainConfig:
+        if self.dataset is None and not self.datasets:
+            raise ValueError("Either dataset or datasets must be configured")
+        if self.dataset is None and self.datasets:
+            object.__setattr__(self, "dataset", self.datasets[0])
+        return self
+
+    def dataset_configs(self) -> list[StudentDatasetConfig]:
+        if self.datasets:
+            return list(self.datasets)
+        if self.dataset is None:
+            raise ValueError("No student dataset configuration is available")
+        return [self.dataset]
 
 
 class StudentSmokeConfig(StudentTrainConfig):
