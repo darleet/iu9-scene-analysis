@@ -618,6 +618,7 @@ class StudentTrainer:
         return build_teacher_soft_target(
             teacher_heatmap=batch["teacher_heatmap"],
             obstacle_target=batch["obstacle_target"],
+            alpha=self.config.loss.teacher_soft_target_alpha,
         )
 
     @property

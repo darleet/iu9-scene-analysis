@@ -63,9 +63,12 @@ def distillation_mse(
 def build_teacher_soft_target(
     teacher_heatmap: torch.Tensor,
     obstacle_target: torch.Tensor,
+    alpha: float,
 ) -> torch.Tensor:
     gate = (obstacle_target.float() > 0.5).float()
-    return teacher_heatmap.float() * gate
+    alpha_value = float(alpha)
+    teacher_foreground = teacher_heatmap.float().clamp(0.0, 1.0) * gate
+    return alpha_value * gate + (1.0 - alpha_value) * teacher_foreground
 
 
 def offroad_loss(student_heatmap: torch.Tensor, ignore_mask: torch.Tensor) -> torch.Tensor:
@@ -93,6 +96,7 @@ class StudentHeatmapLoss(nn.Module):
         distill_target = build_teacher_soft_target(
             teacher_heatmap=teacher_heatmap,
             obstacle_target=obstacle_target,
+            alpha=self.config.teacher_soft_target_alpha,
         )
         supervised_target = distill_target if self.config.use_teacher_soft_target else obstacle_target
         bce_positive_class_weight = 1.0 if self.config.use_teacher_soft_target else self.config.positive_class_weight

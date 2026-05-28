@@ -199,6 +199,7 @@ class StudentLossConfig(StudentBaseConfig):
     dice_weight: float = Field(default=0.5, ge=0.0)
     distill_mse_weight: float = Field(default=0.2, ge=0.0)
     use_teacher_soft_target: bool = True
+    teacher_soft_target_alpha: float = Field(default=0.2, ge=0.0, le=1.0)
     offroad_weight: float = Field(default=0.1, ge=0.0)
     positive_class_weight: float = Field(default=6.0, gt=0.0)
     eps: float = Field(default=0.000001, gt=0.0)

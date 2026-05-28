@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from scene_analysis.student.config import StudentLossConfig
-from scene_analysis.student.losses import StudentHeatmapLoss
+from scene_analysis.student.losses import StudentHeatmapLoss, build_teacher_soft_target
 
 
 def test_student_loss_is_finite() -> None:
@@ -108,6 +108,7 @@ def test_mask_losses_can_use_teacher_soft_target() -> None:
             dice_weight=0.0,
             distill_mse_weight=0.0,
             use_teacher_soft_target=True,
+            teacher_soft_target_alpha=0.0,
             offroad_weight=0.0,
             positive_class_weight=1.0,
         )
@@ -127,6 +128,16 @@ def test_mask_losses_can_use_teacher_soft_target() -> None:
 
     assert parts["loss_bce"] < torch.tensor(0.001)
     assert loss < torch.tensor(0.001)
+
+
+def test_teacher_soft_target_blends_gt_and_teacher_heatmap() -> None:
+    teacher = torch.tensor([[[[0.0, 0.5, 1.0, 1.0]]]], dtype=torch.float32)
+    obstacle_target = torch.tensor([[[[1.0, 1.0, 1.0, 0.0]]]], dtype=torch.float32)
+
+    target = build_teacher_soft_target(teacher, obstacle_target, alpha=0.2)
+
+    expected = torch.tensor([[[[0.2, 0.6, 1.0, 0.0]]]], dtype=torch.float32)
+    assert torch.allclose(target, expected)
 
 
 def test_teacher_soft_target_uses_neutral_bce_class_weight() -> None:
