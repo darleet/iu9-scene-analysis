@@ -42,3 +42,19 @@ def test_student_metrics_compute_f1_and_iou_from_binary_confusion() -> None:
     assert confusion == {"tp": 1, "fp": 1, "fn": 1, "tn": 1}
     assert np.isclose(metrics["f1"], 0.5)
     assert np.isclose(metrics["iou"], 1.0 / 3.0)
+
+
+def test_student_metrics_treat_any_positive_soft_target_as_obstacle() -> None:
+    heatmap = torch.tensor([[[[0.9, 0.4], [0.8, 0.1]]]], dtype=torch.float32)
+    target = torch.tensor([[[[0.05, 0.0], [0.3, 0.0]]]], dtype=torch.float32)
+    valid = torch.ones_like(target)
+    ignore = torch.zeros_like(target)
+
+    scores, labels = collect_scores_and_labels(heatmap, target, valid)
+    confusion = compute_binary_confusion(heatmap, target, valid, threshold=0.5)
+    stats = compute_heatmap_stats(heatmap, valid, ignore, target)
+
+    assert labels.tolist() == [1, 0, 1, 0]
+    assert confusion == {"tp": 2, "fp": 0, "fn": 0, "tn": 2}
+    assert stats["positive_pixels"] == 2
+    assert stats["negative_pixels"] == 2

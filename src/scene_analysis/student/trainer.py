@@ -16,7 +16,7 @@ from scene_analysis.evaluation.visualization import plot_precision_recall_curve
 from scene_analysis.student.artifacts import save_csv, save_json, save_yaml
 from scene_analysis.student.config import StudentDatasetConfig, StudentTrainConfig
 from scene_analysis.student.dataset import StudentHeatmapDataset, build_resized_student_cache
-from scene_analysis.student.losses import StudentHeatmapLoss
+from scene_analysis.student.losses import StudentHeatmapLoss, build_teacher_soft_target
 from scene_analysis.student.metrics import (
     collect_scores_and_labels,
     compute_binary_confusion,
@@ -267,18 +267,19 @@ class StudentTrainer:
                 loss_totals["val_loss"] += float(loss.detach().cpu().item())
                 for name, value in parts.items():
                     loss_totals[name] += float(value.detach().cpu().item())
+                metric_target = self._build_metric_target(batch)
                 stats = compute_heatmap_stats(
                     outputs["final_heatmap"],
                     batch["valid_mask"],
                     batch["ignore_mask"],
-                    batch["obstacle_target"],
+                    metric_target,
                 )
                 for key in stats_totals:
                     if key in stats:
                         stats_totals[key] += float(stats[key])
                 confusion = compute_binary_confusion(
                     outputs["final_heatmap"],
-                    batch["obstacle_target"],
+                    metric_target,
                     batch["valid_mask"],
                     self.config.validation.threshold_preview,
                 )
@@ -287,7 +288,7 @@ class StudentTrainer:
                 if self.config.validation.compute_average_precision:
                     scores, labels = collect_scores_and_labels(
                         outputs["final_heatmap"],
-                        batch["obstacle_target"],
+                        metric_target,
                         batch["valid_mask"],
                     )
                     all_scores.append(scores)
@@ -610,6 +611,14 @@ class StudentTrainer:
             else:
                 moved[key] = value.to(self.device, non_blocking=True)
         return moved
+
+    def _build_metric_target(self, batch: dict[str, Any]) -> torch.Tensor:
+        if not self.config.loss.use_teacher_soft_target:
+            return batch["obstacle_target"]
+        return build_teacher_soft_target(
+            teacher_heatmap=batch["teacher_heatmap"],
+            obstacle_target=batch["obstacle_target"],
+        )
 
     @property
     def _amp_enabled(self) -> bool:

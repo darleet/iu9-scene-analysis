@@ -48,6 +48,114 @@ def test_student_loss_handles_extreme_half_precision_logits() -> None:
     assert all(torch.isfinite(value) for value in parts.values())
 
 
+def test_distillation_loss_zeros_teacher_background() -> None:
+    criterion = StudentHeatmapLoss(
+        StudentLossConfig(
+            bce_weight=0.0,
+            dice_weight=0.0,
+            distill_mse_weight=1.0,
+            offroad_weight=0.0,
+        )
+    )
+    prob = torch.zeros((1, 1, 4, 4))
+    outputs = {
+        "obstacle_logits": torch.zeros_like(prob),
+        "obstacle_prob": prob,
+        "final_heatmap": prob,
+    }
+    obstacle_target = torch.zeros_like(prob)
+    obstacle_target[:, :, 1, 2] = 1.0
+    valid_mask = torch.ones_like(prob)
+    ignore_mask = torch.zeros_like(prob)
+    teacher = torch.ones_like(prob)
+
+    loss, parts = criterion(outputs, obstacle_target, valid_mask, ignore_mask, teacher)
+
+    assert torch.isclose(parts["loss_distill"], torch.tensor(1.0 / 16.0))
+    assert torch.isclose(loss, torch.tensor(1.0 / 16.0))
+
+
+def test_distillation_loss_does_not_expand_gt_gate() -> None:
+    criterion = StudentHeatmapLoss(
+        StudentLossConfig(
+            bce_weight=0.0,
+            dice_weight=0.0,
+            distill_mse_weight=1.0,
+            offroad_weight=0.0,
+        )
+    )
+    prob = torch.zeros((1, 1, 5, 5))
+    outputs = {
+        "obstacle_logits": torch.zeros_like(prob),
+        "obstacle_prob": prob,
+        "final_heatmap": prob,
+    }
+    obstacle_target = torch.zeros_like(prob)
+    obstacle_target[:, :, 2, 2] = 1.0
+    valid_mask = torch.ones_like(prob)
+    ignore_mask = torch.zeros_like(prob)
+    teacher = torch.ones_like(prob)
+
+    _, parts = criterion(outputs, obstacle_target, valid_mask, ignore_mask, teacher)
+
+    assert torch.isclose(parts["loss_distill"], torch.tensor(1.0 / 25.0))
+
+
+def test_mask_losses_can_use_teacher_soft_target() -> None:
+    criterion = StudentHeatmapLoss(
+        StudentLossConfig(
+            bce_weight=1.0,
+            dice_weight=0.0,
+            distill_mse_weight=0.0,
+            use_teacher_soft_target=True,
+            offroad_weight=0.0,
+            positive_class_weight=1.0,
+        )
+    )
+    logits = torch.full((1, 1, 2, 2), -10.0)
+    outputs = {
+        "obstacle_logits": logits,
+        "obstacle_prob": torch.sigmoid(logits),
+        "final_heatmap": torch.sigmoid(logits),
+    }
+    obstacle_target = torch.ones_like(logits)
+    valid_mask = torch.ones_like(logits)
+    ignore_mask = torch.zeros_like(logits)
+    teacher = torch.zeros_like(logits)
+
+    loss, parts = criterion(outputs, obstacle_target, valid_mask, ignore_mask, teacher)
+
+    assert parts["loss_bce"] < torch.tensor(0.001)
+    assert loss < torch.tensor(0.001)
+
+
+def test_teacher_soft_target_uses_neutral_bce_class_weight() -> None:
+    criterion = StudentHeatmapLoss(
+        StudentLossConfig(
+            bce_weight=1.0,
+            dice_weight=0.0,
+            distill_mse_weight=0.0,
+            use_teacher_soft_target=True,
+            offroad_weight=0.0,
+            positive_class_weight=100.0,
+        )
+    )
+    logits = torch.zeros((1, 1, 2, 2))
+    outputs = {
+        "obstacle_logits": logits,
+        "obstacle_prob": torch.sigmoid(logits),
+        "final_heatmap": torch.sigmoid(logits),
+    }
+    obstacle_target = torch.ones_like(logits)
+    valid_mask = torch.ones_like(logits)
+    ignore_mask = torch.zeros_like(logits)
+    teacher = torch.full_like(logits, 0.5)
+
+    _, parts = criterion(outputs, obstacle_target, valid_mask, ignore_mask, teacher)
+
+    assert torch.isclose(parts["loss_bce"], torch.tensor(0.6931472), atol=1e-6)
+
+
 def test_student_loss_raises_on_zero_valid_pixels() -> None:
     criterion = StudentHeatmapLoss(StudentLossConfig())
     prob = torch.full((1, 1, 4, 4), 0.5)

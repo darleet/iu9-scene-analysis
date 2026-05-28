@@ -96,6 +96,7 @@ loss:
   bce_weight: 1.5
   dice_weight: 3.0
   distill_mse_weight: 0.5
+  use_teacher_soft_target: true
   offroad_weight: 2.0
   positive_class_weight: 6.0
   eps: 0.000001

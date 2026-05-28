@@ -16,7 +16,7 @@ def collect_scores_and_labels(
     target = obstacle_target.detach().float().cpu().numpy()
     valid = valid_mask.detach().float().cpu().numpy() > 0.5
     scores = heatmap[valid].astype(np.float32, copy=False)
-    labels = (target[valid] > 0.5).astype(np.uint8, copy=False)
+    labels = (target[valid] > 0.0).astype(np.uint8, copy=False)
     return scores.reshape(-1), labels.reshape(-1)
 
 
@@ -31,7 +31,7 @@ def compute_binary_confusion(
     threshold: float,
 ) -> dict[str, int]:
     pred = final_heatmap.detach().float().cpu() >= float(threshold)
-    target = obstacle_target.detach().float().cpu() > 0.5
+    target = obstacle_target.detach().float().cpu() > 0.0
     valid = valid_mask.detach().float().cpu() > 0.5
 
     pred = pred & valid
@@ -78,7 +78,7 @@ def compute_heatmap_stats(
         "valid_pixels": int(valid.sum().item()),
     }
     if obstacle_target is not None:
-        target = obstacle_target.detach().float().cpu() > 0.5
+        target = obstacle_target.detach().float().cpu() > 0.0
         positives = target & valid
         stats["positive_pixels"] = int(positives.sum().item())
         stats["negative_pixels"] = int(valid.sum().item() - positives.sum().item())

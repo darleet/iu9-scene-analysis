@@ -29,7 +29,7 @@ visualization:
   colormap: "inferno"
   alpha: 0.5
   show_binary_mask: true
-  threshold: 0.5
+  threshold: 0.1
   draw_stats: true
   draw_model_name: true
 

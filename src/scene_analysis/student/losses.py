@@ -60,6 +60,14 @@ def distillation_mse(
     return (mse * valid_float).sum() / valid_pixels
 
 
+def build_teacher_soft_target(
+    teacher_heatmap: torch.Tensor,
+    obstacle_target: torch.Tensor,
+) -> torch.Tensor:
+    gate = (obstacle_target.float() > 0.5).float()
+    return teacher_heatmap.float() * gate
+
+
 def offroad_loss(student_heatmap: torch.Tensor, ignore_mask: torch.Tensor) -> torch.Tensor:
     """Loss для объектов вне дороги"""
     ignore_float = ignore_mask.float()
@@ -82,14 +90,21 @@ class StudentHeatmapLoss(nn.Module):
         ignore_mask: torch.Tensor,
         teacher_heatmap: torch.Tensor,
     ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        distill_target = build_teacher_soft_target(
+            teacher_heatmap=teacher_heatmap,
+            obstacle_target=obstacle_target,
+        )
+        supervised_target = distill_target if self.config.use_teacher_soft_target else obstacle_target
+        bce_positive_class_weight = 1.0 if self.config.use_teacher_soft_target else self.config.positive_class_weight
+
         loss_bce = masked_bce_loss(
             outputs["obstacle_logits"],
-            obstacle_target,
+            supervised_target,
             valid_mask,
-            self.config.positive_class_weight,
+            bce_positive_class_weight,
         )
-        loss_dice = masked_dice_loss(outputs["obstacle_prob"], obstacle_target, valid_mask, self.config.eps)
-        loss_distill = distillation_mse(outputs["final_heatmap"], teacher_heatmap, valid_mask)
+        loss_dice = masked_dice_loss(outputs["obstacle_prob"], supervised_target, valid_mask, self.config.eps)
+        loss_distill = distillation_mse(outputs["final_heatmap"], distill_target, valid_mask)
         loss_offroad = offroad_loss(outputs["final_heatmap"], ignore_mask)
 
         total = (
